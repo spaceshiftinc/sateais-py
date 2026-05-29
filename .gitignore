@@ -1,0 +1,81 @@
+# Python ビルド成果物
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+wheels/
+.eggs/
+.installed.cfg
+MANIFEST
+
+# 仮想環境
+.venv/
+venv/
+env/
+ENV/
+
+# 環境変数 / シークレット
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# テスト / カバレッジ
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.cache
+.pytest_cache/
+nosetests.xml
+
+# 型チェック / Lint キャッシュ
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.pytype/
+.pyre/
+
+# IDE / エディタ
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.spyderproject
+.spyproject
+.ropeproject
+
+# OS 固有
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Jupyter
+.ipynb_checkpoints/
+profile_default/
+ipython_config.py
+
+# ローカルテスト用の認証ファイル
+# （CI でなく、開発者ローカルで動作確認した際の流出防止）
+.sateais/
+credentials
+*.geojson
+!docs/**/*.geojson
+!tests/**/*.geojson
+
+# ビルドツール一時ファイル
+.python-version
+pip-log.txt
+pip-delete-this-directory.txt
