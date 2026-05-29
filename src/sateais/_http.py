@@ -24,7 +24,6 @@ from ._errors import (
 from ._types import DetectionRequest, Job, JobStatus
 from ._version import __version__
 
-
 DEFAULT_API_BASE_URL = "https://api.sateais.com/api/v1"
 
 _STATUS_CODE_MAP: dict[int, type[APIError]] = {
@@ -37,12 +36,14 @@ _STATUS_CODE_MAP: dict[int, type[APIError]] = {
     429: RateLimitError,
 }
 
+
 @runtime_checkable
 class ApiClient(Protocol):
     """SateAIs API への通信ポート
 
     HttpApiClient が標準実装。テスト時には Fake と差し替える。
     """
+
     def submit_detection(self, request: DetectionRequest) -> Job: ...
     def get_job(self, job_id: str) -> Job: ...
     def get_job_result(self, job_id: str) -> dict[str, Any]: ...
@@ -85,7 +86,7 @@ class HttpApiClient:
                 follow_redirects=True,
             )
             self.owns_http = True
-    
+
     def submit_detection(self, request: DetectionRequest) -> Job:
         response = self._request(
             "POST",
@@ -97,27 +98,28 @@ class HttpApiClient:
     def get_job(self, job_id: str) -> Job:
         response = self._request("GET", f"/jobs/{job_id}")
         return _job_from_dict(response.json())
-    
+
     def get_job_result(self, job_id: str) -> dict[str, Any]:
         resp = self._request("GET", f"/jobs/{job_id}/result.geojson")
         return resp.json()
-    
+
     def close(self) -> None:
         if self.owns_http:
             self._http.close()
-    
 
-    def _request(self, method: str, path: str, *, json_body: dict[str, Any] | None = None) -> httpx.Response:
+    def _request(
+        self, method: str, path: str, *, json_body: dict[str, Any] | None = None
+    ) -> httpx.Response:
         try:
             response = self._http.request(method, path, json=json_body)
         except httpx.HTTPError as e:
             raise APIError(0, None, f"HTTP request failed: {str(e)}") from e
-        
+
         if response.is_success:
             return response
         _raise_api_error(response)
 
-    
+
 def _job_from_dict(data: dict[str, Any]) -> Job:
     """API レスポンス dict を Job に変換する"""
     return Job(
@@ -129,15 +131,16 @@ def _job_from_dict(data: dict[str, Any]) -> Job:
         error_code=data.get("error_code") or data.get("error"),
         error_message=data.get("error_message"),
     )
-    
+
+
 def _raise_api_error(response: httpx.Response) -> NoReturn:
     """エラーレスポンスを APIError サブクラスに変換して送出する"""
     try:
         body = response.json()
     except ValueError:
         body = {}
-    
-    code :str | None = None
+
+    code: str | None = None
     message: str = response.text or f"HTTP {response.status_code}"
 
     if isinstance(body, dict):
@@ -151,6 +154,6 @@ def _raise_api_error(response: httpx.Response) -> NoReturn:
         else:
             code = body.get("error_code")
             message = body.get("error_message") or body.get("message") or message
-    
+
     cls = _STATUS_CODE_MAP.get(response.status_code, APIError)
     raise cls(response.status_code, code, message)

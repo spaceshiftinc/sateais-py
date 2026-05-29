@@ -82,6 +82,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_jobs(sub)
     return p
 
+
 def _add_login(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("login", help="Save API key to ~/.sateais/credentials")
     p.add_argument("--api-key", "-k", help="API key (omit to prompt interactively)")
@@ -143,6 +144,7 @@ def _add_detect(sub: argparse._SubParsersAction) -> None:
         sp.add_argument("-o", "--output", help="Write output to file instead of stdout")
         sp.set_defaults(func=_cmd_detect, detection_type=dt)
 
+
 def _add_jobs(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("jobs", help="Manage jobs")
     jobs_sub = p.add_subparsers(dest="action", required=True, metavar="<action>")
@@ -160,7 +162,7 @@ def _add_jobs(sub: argparse._SubParsersAction) -> None:
     sp = jobs_sub.add_parser("wait", help="Wait for job completion and download result")
     sp.add_argument("job_id")
     sp.add_argument("--poll-interval", type=float, default=10.0)
-    sp.add_argument("--timeout",type=float, default=None)
+    sp.add_argument("--timeout", type=float, default=None)
     sp.add_argument("-o", "--output", help="Write output to file instead of stdout")
     sp.set_defaults(func=_cmd_jobs_wait)
 
@@ -187,21 +189,22 @@ def _cmd_detect(args: argparse.Namespace, api: ApiClient | None = None) -> int:
             date_direction=getattr(args, "date_direction", None),
             orbit_direction=getattr(args, "orbit_direction", None),
         )
-        
+
         request.validate()
         job = api_client.submit_detection(request)
-        
+
         if args.wait:
             result = Jobs(api_client).wait(
                 job.job_id,
                 poll_interval=args.poll_interval,
                 timeout=args.timeout,
-                on_poll=_process_callback()
+                on_poll=_process_callback(),
             )
             _output_json(result, args.output)
         else:
             _output_json(_job_to_dict(job), args.output)
     return 0
+
 
 def _cmd_jobs_status(args: argparse.Namespace, api: ApiClient | None = None) -> int:
     with _open_api(api) as api_client:
@@ -209,11 +212,13 @@ def _cmd_jobs_status(args: argparse.Namespace, api: ApiClient | None = None) -> 
         _output_json(_job_to_dict(job), args.output)
     return 0
 
+
 def _cmd_jobs_result(args: argparse.Namespace, api: ApiClient | None = None) -> int:
     with _open_api(api) as api_client:
         result = Jobs(api_client).result(args.job_id)
         _output_json(result, args.output)
     return 0
+
 
 def _cmd_jobs_wait(args: argparse.Namespace, api: ApiClient | None = None) -> int:
     with _open_api(api) as api_client:
@@ -221,26 +226,25 @@ def _cmd_jobs_wait(args: argparse.Namespace, api: ApiClient | None = None) -> in
             args.job_id,
             poll_interval=args.poll_interval,
             timeout=args.timeout,
-            on_poll=_process_callback()
+            on_poll=_process_callback(),
         )
         _output_json(result, args.output)
     return 0
 
 
-
 class _ApiClientContext:
     """ApiClient のクローズを保証する context manager"""
+
     def __init__(self, client: ApiClient, owns: bool) -> None:
         self.client = client
         self.owns = owns
 
     def __enter__(self) -> ApiClient:
         return self.client
-    
+
     def __exit__(self, *ext_info: Any) -> None:
         if self.owns:
             self.client.close()
-
 
 
 def _open_api(injected: ApiClient | None = None) -> _ApiClientContext:
@@ -260,6 +264,7 @@ def _open_api(injected: ApiClient | None = None) -> _ApiClientContext:
     base_url = os.environ.get(ENV_BASE_URL) or DEFAULT_API_BASE_URL
     return _ApiClientContext(HttpApiClient(api_key=api_key, base_url=base_url), owns=True)
 
+
 def _job_to_dict(job: Job) -> dict[str, Any]:
     """Job オブジェクトを JSON シリアライズ可能な dict に変換する"""
     fields = {
@@ -271,7 +276,8 @@ def _job_to_dict(job: Job) -> dict[str, Any]:
         "error_code": job.error_code,
         "error_message": job.error_message,
     }
-    return {k:v for k, v in fields.items() if v is not None}
+    return {k: v for k, v in fields.items() if v is not None}
+
 
 def _output_json(data: dict[str, Any], output_path: str | None) -> None:
     text = json.dumps(data, ensure_ascii=False, indent=2)
@@ -283,6 +289,7 @@ def _output_json(data: dict[str, Any], output_path: str | None) -> None:
     else:
         sys.stdout.write(text + "\n")
 
+
 def _process_callback() -> Any:
     """wait 中の進捗を stderr に出すコールバック（同じ status は重複表示しない）"""
     last: dict[str, str] = {}
@@ -293,6 +300,7 @@ def _process_callback() -> Any:
             last["status"] = job.status.value
 
     return _cb
+
 
 def _exit_code_for_status(status_code: int) -> int:
     if status_code in (401, 403):

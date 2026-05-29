@@ -7,13 +7,13 @@ Protocol は切らない（差し替える必要性が薄いため）。
 テストでは `path` 引数で `tmp_path` に向けて検証する。
 """
 
-
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
 DEFAULT_CREDENTIALS_PATH = Path.home() / ".sateais" / "credentials"
+
 
 def load_api_key(path: Path | None = None) -> str | None:
     """APIキーをファイルから読み込む
@@ -24,7 +24,7 @@ def load_api_key(path: Path | None = None) -> str | None:
     Returns:
         保存されたAPIキー。ファイル無し・破損時は None。
     """
-    
+
     p = path or DEFAULT_CREDENTIALS_PATH
     if not p.exists():
         return None
@@ -32,7 +32,7 @@ def load_api_key(path: Path | None = None) -> str | None:
         data = json.loads(p.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return None
-    
+
     key = data.get("api_key") if isinstance(data, dict) else None
     return key if isinstance(key, str) else None
 

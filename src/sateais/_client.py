@@ -16,11 +16,11 @@ from ._errors import CredentialsNotFoundError, JobFailedError, JobTimeoutError
 from ._http import DEFAULT_API_BASE_URL, ApiClient, HttpApiClient
 from ._types import DetectionRequest, DetectionType, Job
 
-
 ENV_API_KEY = "SATEAIS_API_KEY"
 ENV_BASE_URL = "SATEAIS_BASE_URL"
 
 PollCallback = Callable[[Job], None]
+
 
 class Client:
     """SateAIs API クライアント
@@ -65,15 +65,15 @@ class Client:
         self.base_url = resolved_base_url
         self._api: ApiClient
         if api is None:
-             self._api = HttpApiClient(api_key=self.api_key, base_url=self.base_url, timeout=timeout)
-             self._owns_api = True
+            self._api = HttpApiClient(api_key=self.api_key, base_url=self.base_url, timeout=timeout)
+            self._owns_api = True
         else:
             self._api = api
             self._owns_api = False
 
         self.detect = Detect(self._api)
         self.jobs = Jobs(self._api)
-        
+
     def close(self) -> None:
         """通信リソースを解放する（外部注入された ApiClient は解放しない）"""
         if self._owns_api:
@@ -81,7 +81,7 @@ class Client:
 
     def __enter__(self) -> Client:
         return self
-    
+
     def __exit__(self, *exc_info: Any) -> None:
         self.close()
 
@@ -94,7 +94,7 @@ class Detect:
 
     def __init__(self, api: ApiClient):
         self._api = api
-    
+
     def ship(
         self,
         *,
@@ -120,7 +120,6 @@ class Detect:
                 satellite_id=satellite_id,
             )
         )
-    
 
     def oilslick(
         self,
@@ -223,7 +222,7 @@ class Detect:
     def _submit(self, request: DetectionRequest) -> Job:
         request.validate()
         return self._api.submit_detection(request)
-    
+
 
 class Jobs:
     """ジョブ管理用ファサード"""

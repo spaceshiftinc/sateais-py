@@ -32,7 +32,7 @@ class JobStatus(str, Enum):
             return cls(raw)
         except ValueError:
             return cls.UNKNOWN
-    
+
 
 @dataclass
 class Job:
@@ -59,16 +59,15 @@ class Job:
     @property
     def is_terminal(self) -> bool:
         return self.status in (JobStatus.COMPLETED, JobStatus.FAILED)
-    
+
     @property
     def is_completed(self) -> bool:
         return self.status == JobStatus.COMPLETED
-    
 
     @property
     def is_failed(self) -> bool:
         return self.status == JobStatus.FAILED
-    
+
 
 class DetectionType(str, Enum):
     """検出ジョブの種別"""
@@ -83,12 +82,12 @@ class DetectionType(str, Enum):
     def accepts_scene_or_polygon_date(self) -> bool:
         """この種別のジョブが scene_id / polygon + date データを受け入れるか"""
         return self in (DetectionType.SHIP, DetectionType.OILSLICK)
-    
+
     @property
     def requires_date_range(self) -> bool:
         """この種別のジョブが polygon + start_date / end_date データを必須とするか"""
         return self in (
-            DetectionType.NEWBUILDING, 
+            DetectionType.NEWBUILDING,
             DetectionType.DISAPPEARBUILDING,
             DetectionType.TIMESERIES,
         )
@@ -144,7 +143,7 @@ class DetectionRequest:
                 raise InvalidDetectionRequestError(
                     f"{t.value} requires polygon, date_start, and date_end"
                 )
-    
+
     def to_body(self) -> dict[str, str]:
         """APIリクエストボディ dict に変換する（None フィールドは除外）"""
         fields = {
