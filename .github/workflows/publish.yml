@@ -1,0 +1,174 @@
+name: Publish
+
+# ブランチ マージで自動公開:
+#   develop マージ → TestPyPI へ <version>.dev<run_number> として公開
+#   main    マージ → PyPI へ pyproject.toml の <version> をそのまま公開
+#                    + v<version> タグを作成 + GitHub Release
+#
+# 事前準備（PyPI Trusted Publishing）:
+#   1. https://pypi.org/manage/account/publishing/ で "sateais" を Pending Publisher 登録
+#      - Owner: <github-org>
+#      - Repository: sateais-py
+#      - Workflow: publish.yml
+#      - Environment: pypi
+#   2. 同様に https://test.pypi.org/ で "sateais" を Pending Publisher 登録
+#      - Environment: testpypi
+#   3. GitHub リポ Settings → Environments で `pypi` / `testpypi` を作成
+#      （pypi は approver を 1 人付けるのを推奨）
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build distribution
+    runs-on: ubuntu-latest
+    outputs:
+      target: ${{ steps.detect.outputs.target }}
+      version: ${{ steps.detect.outputs.version }}
+      already_released: ${{ steps.detect.outputs.already_released }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # タグ存在チェックのため
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Detect target and resolve version
+        id: detect
+        run: |
+          BASE_VERSION=$(uv run python -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+
+          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            TARGET="pypi"
+            VERSION="$BASE_VERSION"
+            # main 公開済みバージョンを誤って再公開しないようガード
+            if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
+              echo "Tag v${VERSION} already exists. Bump pyproject.toml version before merging to main."
+              echo "already_released=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "already_released=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            TARGET="testpypi"
+            # TestPyPI は同一バージョン再アップ不可なので run_number で一意化
+            VERSION="${BASE_VERSION}.dev${GITHUB_RUN_NUMBER}"
+            echo "already_released=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "target=${TARGET}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved: target=${TARGET} version=${VERSION}"
+
+      - name: Patch version in pyproject.toml (TestPyPI only)
+        if: steps.detect.outputs.target == 'testpypi'
+        run: |
+          uv run python -c "
+          import pathlib, re
+          p = pathlib.Path('pyproject.toml')
+          text = p.read_text()
+          new = re.sub(r'^version = \".*\"', 'version = \"${{ steps.detect.outputs.version }}\"', text, count=1, flags=re.MULTILINE)
+          p.write_text(new)
+          "
+          grep '^version' pyproject.toml
+
+      - name: Build sdist and wheel
+        if: steps.detect.outputs.already_released != 'true'
+        run: uv build
+
+      - name: Check distribution metadata
+        if: steps.detect.outputs.already_released != 'true'
+        run: |
+          uv tool install twine
+          uv tool run twine check dist/*
+
+      - name: Upload build artifacts
+        if: steps.detect.outputs.already_released != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    if: needs.build.outputs.target == 'testpypi' && needs.build.outputs.already_released != 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/sateais/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    if: needs.build.outputs.target == 'pypi' && needs.build.outputs.already_released != 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/sateais/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    name: Tag & Create GitHub Release
+    needs: [build, publish-pypi]
+    if: needs.build.outputs.target == 'pypi' && needs.publish-pypi.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Create tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+          TAG="v${VERSION}"
+          git tag "$TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file CHANGELOG.md \
+            dist/*
