@@ -80,7 +80,7 @@ class DetectionType(str, Enum):
     TIMESERIES = "timeseries"
 
     @property
-    def accepts_scene_or_polygon_data(self) -> bool:
+    def accepts_scene_or_polygon_date(self) -> bool:
         """この種別のジョブが scene_id / polygon + date データを受け入れるか"""
         return self in (DetectionType.SHIP, DetectionType.OILSLICK)
     
@@ -130,7 +130,7 @@ class DetectionRequest:
             InvalidDetectionRequestError: 組み合わせが不正な場合
         """
         t = self.detection_type
-        if t.accepts_scene_or_polygon_data:
+        if t.accepts_scene_or_polygon_date:
             has_scene = bool(self.scene_id)
             has_polygon_date = bool(self.polygon) and bool(self.date)
             if has_scene == has_polygon_date:
@@ -142,7 +142,7 @@ class DetectionRequest:
         elif t.requires_date_range:
             if not (self.polygon and self.date_start and self.date_end):
                 raise InvalidDetectionRequestError(
-                    f"{t.value}: polygon, date_start, date_end are required"
+                    f"{t.value} requires polygon, date_start, and date_end"
                 )
     
     def to_body(self) -> dict[str, str]:

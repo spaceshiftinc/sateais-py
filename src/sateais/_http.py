@@ -45,7 +45,7 @@ class ApiClient(Protocol):
     """
     def submit_detection(self, request: DetectionRequest) -> Job: ...
     def get_job(self, job_id: str) -> Job: ...
-    def get_job_result(self, job: Job) -> dict[str, Any]: ...
+    def get_job_result(self, job_id: str) -> dict[str, Any]: ...
     def close(self) -> None: ...
 
 
@@ -98,8 +98,8 @@ class HttpApiClient:
         response = self._request("GET", f"/jobs/{job_id}")
         return _job_from_dict(response.json())
     
-    def get_job_result(self, job: Job) -> dict[str, Any]:
-        resp = self._request("GET", f"/jobs/{job.job_id}/result.json")
+    def get_job_result(self, job_id: str) -> dict[str, Any]:
+        resp = self._request("GET", f"/jobs/{job_id}/result.geojson")
         return resp.json()
     
     def close(self) -> None:

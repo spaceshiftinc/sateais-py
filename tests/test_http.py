@@ -24,8 +24,10 @@ from sateais._http import HttpApiClient, _raise_api_error
 
 def _make_client(handler: Callable[[httpx.Request], httpx.Response]) -> HttpApiClient:
     transport = httpx.MockTransport(handler)
-    http = httpx.Client(base_url="https://api.test", transport=transport, follow_redirects=True)
-    return HttpApiClient("sk_test", base_url="https://api.test", http_client=http)
+    http = httpx.Client(
+        base_url="https://api.test/api/v1", transport=transport, follow_redirects=True
+    )
+    return HttpApiClient("sk_test", base_url="https://api.test/api/v1", http_client=http)
 
 
 def test_submit_detection_posts_correct_path_and_body() -> None:

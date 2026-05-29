@@ -94,24 +94,52 @@ def _add_detect(sub: argparse._SubParsersAction) -> None:
     for dt in DETECT_ENDPOINTS:
         sp = detect_sub.add_parser(dt.value, help=f"Submit a {dt.value} detection")
 
-        sp.add_argument("--polygon", help="WKT polygon (EPSG:4326)")
-        if dt.accepts_scene_or_polygon_data:
-            sp.add_argument("--scene-id", required=True, help="Scene ID to analyze")
-            sp.add_argument("--date", help="Reference date YYYY-MM-DD (required if --polygon is used)")
-            sp.add_argument("--date-direction", choices=["before", "after", "nearest"], help="Direction for date range filtering")
+        if dt.accepts_scene_or_polygon_date:
+            # ship / oilslick: scene_id か polygon+date のどちらか
+            sp.add_argument("--scene-id", help="Scene ID to analyze")
+            sp.add_argument("--polygon", help="WKT polygon (EPSG:4326)")
+            sp.add_argument(
+                "--date", help="Reference date YYYY-MM-DD (required if --polygon is used)"
+            )
+            sp.add_argument(
+                "--date-direction",
+                choices=["before", "after", "nearest"],
+                help="Direction for date range filtering",
+            )
+            sp.add_argument(
+                "--orbit-direction",
+                choices=["ascending", "descending"],
+                help="Orbit direction for the scene",
+            )
         elif dt.requires_date_range:
-            sp.add_argument("--date-start", required=True, help="Start date YYYY-MM-DD")
-            sp.add_argument("--date-end", required=True, help="End date YYYY-MM-DD")
-        sp.add_argument("--orbit-direction", choices=["ascending", "descending"], help="Orbit direction for the scene")
+            # newbuilding / disappearbuilding / timeseries: polygon + date_start + date_end が必須
+            # 必須チェックは DetectionRequest.validate() に集約する
+            sp.add_argument("--polygon", help="WKT polygon (EPSG:4326)")
+            sp.add_argument("--date-start", help="Start date YYYY-MM-DD")
+            sp.add_argument("--date-end", help="End date YYYY-MM-DD")
+
         sp.add_argument(
             "--satellite-id",
             default="sentinel-1",
             help="Satellite ID. Currently 'sentinel-1' is the only supported value (default).",
         )
-        sp.add_argument("--wait", action="store_true", help="Block until job completes, then output result GeoJSON")
-        sp.add_argument("--poll-interval", type=float, default=10.0, help="Polling interval in seconds (default: 10)")
-        sp.add_argument("--timeout", type=float, default=None, help="Wait timeout in seconds (default: no timeout)")
-
+        sp.add_argument(
+            "--wait",
+            action="store_true",
+            help="Block until job completes, then output result GeoJSON",
+        )
+        sp.add_argument(
+            "--poll-interval",
+            type=float,
+            default=10.0,
+            help="Polling interval in seconds (default: 10)",
+        )
+        sp.add_argument(
+            "--timeout",
+            type=float,
+            default=None,
+            help="Wait timeout in seconds (default: no timeout)",
+        )
         sp.add_argument("-o", "--output", help="Write output to file instead of stdout")
         sp.set_defaults(func=_cmd_detect, detection_type=dt)
 
@@ -121,6 +149,7 @@ def _add_jobs(sub: argparse._SubParsersAction) -> None:
 
     sp = jobs_sub.add_parser("status", help="Check job status")
     sp.add_argument("job_id")
+    sp.add_argument("-o", "--output", help="Write output to file instead of stdout")
     sp.set_defaults(func=_cmd_jobs_status)
 
     sp = jobs_sub.add_parser("result", help="Download result GeoJSON")
@@ -146,16 +175,17 @@ def _cmd_login(args: argparse.Namespace, api: ApiClient) -> int:
 
 def _cmd_detect(args: argparse.Namespace, api: ApiClient | None = None) -> int:
     with _open_api(api) as api_client:
+        # 検出種別ごとに対応する引数が異なるため、未追加の属性は getattr で吸収する
         request = DetectionRequest(
             detection_type=args.detection_type,
             satellite_id=args.satellite_id,
-            polygon=args.polygon,
-            scene_id=args.scene_id,
-            date=args.date,
-            date_start=args.date_start,
-            date_end=args.date_end,
-            date_direction=args.date_direction,
-            orbit_direction=args.orbit_direction,
+            polygon=getattr(args, "polygon", None),
+            scene_id=getattr(args, "scene_id", None),
+            date=getattr(args, "date", None),
+            date_start=getattr(args, "date_start", None),
+            date_end=getattr(args, "date_end", None),
+            date_direction=getattr(args, "date_direction", None),
+            orbit_direction=getattr(args, "orbit_direction", None),
         )
         
         request.validate()
