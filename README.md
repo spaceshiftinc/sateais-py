@@ -1,6 +1,6 @@
 # sateais
 
-**日本語** | [English](README.en.md)
+**日本語** | [English](https://github.com/spaceshiftinc/sateais-py/blob/v0.1.0/README.en.md)
 
 SateAIs の公式 Python SDK および CLI です。SAR 衛星画像の解析 API
 （船舶検出 / オイルスリック検出 / 新規・消失建物検出 / 時系列変化検出）に

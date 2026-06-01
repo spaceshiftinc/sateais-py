@@ -1,6 +1,6 @@
 # sateais
 
-[日本語](README.md) | **English**
+[日本語](https://github.com/spaceshiftinc/sateais-py/blob/v0.1.0/README.md) | **English**
 
 The official Python SDK and CLI for SateAIs. It provides unified programmatic and
 command-line access to the SAR satellite image analysis APIs (ship detection,
