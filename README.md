@@ -1,14 +1,17 @@
 # sateais
 
-SateAIs の公式 Python SDK / CLI。SAR 衛星画像の解析API
-（船舶 / オイルスリック / 新規・消失建物 / 時系列変化）を一発で叩けます。
-（現状の対応衛星は Sentinel-1。今後拡張予定。）
+**日本語** | [English](README.en.md)
+
+SateAIs の公式 Python SDK および CLI です。SAR 衛星画像の解析 API
+（船舶検出 / オイルスリック検出 / 新規・消失建物検出 / 時系列変化検出）に
+プログラムおよびコマンドラインから統一的にアクセスできます。
+現在の対応衛星は Sentinel-1 で、今後順次拡張を予定しています。
 
 ```bash
 pip install sateais
 ```
 
-これ 1 つで **SDK と CLI の両方** が入ります（`openai-python` と同じパターン）。
+本パッケージには、**SDK と CLI の両方** が含まれます。
 
 ## クイックスタート
 
@@ -28,6 +31,8 @@ sateais detect ship --scene-id S1A_IW_GRDH_... --wait -o ships.geojson
 
 ## 認証
 
+API キーは [SateAIs コンソール](https://console.spcsft.com) で発行できます。
+
 優先度: `api_key` 引数 > 環境変数 `SATEAIS_API_KEY` > `~/.sateais/credentials`
 
 ```bash
@@ -35,8 +40,6 @@ sateais login --api-key sk_live_xxxxx     # → ~/.sateais/credentials (0600)
 # または
 export SATEAIS_API_KEY=sk_live_xxxxx
 ```
-
-`SATEAIS_BASE_URL` で dev 環境などへの切替も可能。
 
 ## SDK
 
@@ -50,7 +53,7 @@ export SATEAIS_API_KEY=sk_live_xxxxx
 | `client.detect.disappearbuilding(...)` | 同上 |
 | `client.detect.timeseries(...)` | 同上 |
 
-詳細パラメータは [API リファレンス](../../products/sateais-api-orchestrator/docs/API.md) 参照。
+詳細パラメータは [API リファレンス](https://docs.spcsft.com/) 参照。
 
 ### ジョブ管理
 
@@ -119,8 +122,12 @@ _http.py                   ← ApiClient Protocol + HttpApiClient
 _types.py , _errors.py     ← エンティティ / 例外
 ```
 
-詳細は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、開発者向けは [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)。
+詳細は [docs/ARCHITECTURE.md](https://github.com/spaceshiftinc/sateais-py/blob/v0.1.0/docs/ARCHITECTURE.md)、開発者向けは [docs/CONTRIBUTING.md](https://github.com/spaceshiftinc/sateais-py/blob/v0.1.0/docs/CONTRIBUTING.md)。
+
+## サポート
+
+技術的なお問い合わせは [console-support@spcsft.com](mailto:console-support@spcsft.com) までご連絡ください。
 
 ## ライセンス
 
-MIT — [LICENSE](LICENSE) 参照。
+MIT — [LICENSE](https://github.com/spaceshiftinc/sateais-py/blob/v0.1.0/LICENSE) 参照。
