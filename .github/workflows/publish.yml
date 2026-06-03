@@ -1,4 +1,7 @@
 name: Publish
+run-name: >-
+  Publish → ${{ github.ref_name == 'main' && 'PyPI' || 'TestPyPI' }}
+  (${{ github.ref_name }})
 
 # ブランチ マージで自動公開:
 #   develop マージ → TestPyPI へ <version>.dev<run_number> として公開
