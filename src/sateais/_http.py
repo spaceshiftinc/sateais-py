@@ -24,7 +24,7 @@ from ._errors import (
 from ._types import DetectionRequest, Job, JobStatus
 from ._version import __version__
 
-DEFAULT_API_BASE_URL = "https://api.sateais.com/api/v1"
+DEFAULT_API_BASE_URL = "https://api.spcsft.com/api/v1"
 
 _STATUS_CODE_MAP: dict[int, type[APIError]] = {
     400: ValidationError,
