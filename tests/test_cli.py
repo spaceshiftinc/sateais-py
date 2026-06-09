@@ -39,9 +39,9 @@ def test_login_writes_to_credentials_file(monkeypatch: pytest.MonkeyPatch, tmp_p
     assert saved["key"] == "sk_abc"
 
 
-def test_detect_outputs_job_json(capsys: pytest.CaptureFixture[str]) -> None:
+def test_analyze_outputs_job_json(capsys: pytest.CaptureFixture[str]) -> None:
     api = FakeApiClient(next_job=make_job(status=JobStatus.PENDING))
-    rc = main(["detect", "ship", "--scene-id", "S1A_X"], api=api)
+    rc = main(["analyze", "ship", "--scene-id", "S1A_X"], api=api)
     assert rc == 0
     out = json.loads(capsys.readouterr().out)
     assert out["job_id"] == "j-1"
@@ -49,14 +49,14 @@ def test_detect_outputs_job_json(capsys: pytest.CaptureFixture[str]) -> None:
     assert api.submitted[0].scene_id == "S1A_X"
 
 
-def test_detect_with_wait_outputs_geojson(capsys: pytest.CaptureFixture[str]) -> None:
+def test_analyze_with_wait_outputs_geojson(capsys: pytest.CaptureFixture[str]) -> None:
     api = FakeApiClient(
         next_job=make_job(status=JobStatus.PENDING),
         job_sequence=[make_job(status=JobStatus.COMPLETED)],
         result={"type": "FeatureCollection", "features": []},
     )
     rc = main(
-        ["detect", "ship", "--scene-id", "S1A_X", "--wait", "--poll-interval", "0"],
+        ["analyze", "ship", "--scene-id", "S1A_X", "--wait", "--poll-interval", "0"],
         api=api,
     )
     assert rc == 0
@@ -89,16 +89,16 @@ def test_no_credentials_returns_exit_code_4(
     assert "API key not found" in capsys.readouterr().err
 
 
-def test_invalid_detection_request_returns_error(
+def test_invalid_analysis_request_returns_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     api = FakeApiClient(next_job=make_job())
-    rc = main(["detect", "newbuilding"], api=api)
+    rc = main(["analyze", "newbuilding"], api=api)
     assert rc == 1
     assert "requires polygon" in capsys.readouterr().err
 
 
 def test_external_api_is_not_closed_by_cli() -> None:
     api = FakeApiClient(next_job=make_job(status=JobStatus.PENDING))
-    main(["detect", "ship", "--scene-id", "S1A_X"], api=api)
+    main(["analyze", "ship", "--scene-id", "S1A_X"], api=api)
     assert api.closed is False

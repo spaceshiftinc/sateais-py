@@ -9,10 +9,10 @@ import httpx
 import pytest
 
 from sateais import (
+    AnalysisRequest,
+    AnalysisType,
     APIError,
     AuthenticationError,
-    DetectionRequest,
-    DetectionType,
     InsufficientCreditsError,
     JobStatus,
     NotFoundError,
@@ -30,7 +30,7 @@ def _make_client(handler: Callable[[httpx.Request], httpx.Response]) -> HttpApiC
     return HttpApiClient("sk_test", base_url="https://api.test/api/v1", http_client=http)
 
 
-def test_submit_detection_posts_correct_path_and_body() -> None:
+def test_submit_analysis_posts_correct_path_and_body() -> None:
     captured: dict = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -39,11 +39,11 @@ def test_submit_detection_posts_correct_path_and_body() -> None:
         return httpx.Response(200, json={"job_id": "j-1", "status": "pending"})
 
     client = _make_client(handler)
-    job = client.submit_detection(DetectionRequest(DetectionType.SHIP, scene_id="S1A_X"))
+    job = client.submit_analysis(AnalysisRequest(AnalysisType.SHIP, scene_id="S1A_X"))
 
     assert job.job_id == "j-1"
     assert job.status is JobStatus.PENDING
-    assert captured["url"].endswith("/api/v1/detect/ship")
+    assert captured["url"].endswith("/api/v1/analyze/ship")
     assert captured["body"] == {"satellite_id": "sentinel-1", "scene_id": "S1A_X"}
 
 

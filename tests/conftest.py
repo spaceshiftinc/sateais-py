@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from sateais import ApiClient
-from sateais._types import DetectionRequest, Job, JobStatus
+from sateais._types import AnalysisRequest, Job, JobStatus
 
 
 @dataclass
@@ -18,16 +18,16 @@ class FakeApiClient:
     """Fake ApiClient
 
     Attributes:
-        submitted: 投入された DetectionRequest のリスト
+        submitted: 投入された AnalysisRequest のリスト
         fetched: get_job() で問い合わせられた job_id のリスト
         fetched_results: get_job_result() で問い合わせられた job_id のリスト
-        next_job: get_job / submit_detection が返す Job
+        next_job: get_job / submit_analysis が返す Job
         job_sequence: 指定されている場合、get_job 呼び出しごとに先頭から消費
         result: get_job_result が返す GeoJSON dict
         closed: close() が呼ばれたかのフラグ
     """
 
-    submitted: list[DetectionRequest] = field(default_factory=list)
+    submitted: list[AnalysisRequest] = field(default_factory=list)
     fetched: list[str] = field(default_factory=list)
     fetched_results: list[str] = field(default_factory=list)
     next_job: Job | None = None
@@ -35,7 +35,7 @@ class FakeApiClient:
     result: dict[str, Any] = field(default_factory=dict)
     closed: bool = False
 
-    def submit_detection(self, request: DetectionRequest) -> Job:
+    def submit_analysis(self, request: AnalysisRequest) -> Job:
         self.submitted.append(request)
         assert self.next_job is not None, "FakeApiClient.next_job not set"
         return self.next_job

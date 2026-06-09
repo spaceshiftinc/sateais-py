@@ -68,7 +68,7 @@ CI ではこれら全てが通る必要があります。
 レビュー時の主な観点:
 
 1. 新しい外部ライブラリ依存は `_http.py` 相当のモジュールに閉じているか
-2. ドメインルール（必須パラメータ組合せなど）は `DetectionRequest.validate()` にあるか
+2. ドメインルール（必須パラメータ組合せなど）は `AnalysisRequest.validate()` にあるか
 3. CLI / SDK 固有の引数解釈・出力整形が下位モジュールに漏れていないか
 4. 「これは Port を切るべきか？」を即決せず、CLAUDE.md の判断基準（テストで困るか + 差し替え未来があるか）を当てはめる
 
@@ -78,10 +78,10 @@ CI ではこれら全てが通る必要があります。
 
 | 変更対象 | テストファイル |
 |---|---|
-| エンティティ / `DetectionRequest.validate` | `tests/test_types.py` |
+| エンティティ / `AnalysisRequest.validate` | `tests/test_types.py` |
 | HTTP 通信 / エラーマッピング | `tests/test_http.py` |
 | 認証ファイル | `tests/test_credentials.py` |
-| Client / Detect / Jobs | `tests/test_client.py` |
+| Client / Analyze / Jobs | `tests/test_client.py` |
 | CLI | `tests/test_cli.py` |
 
 HTTP を絡めないテストは `tests/conftest.FakeApiClient` を `api=` パラメータで注入してください。

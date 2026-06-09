@@ -22,15 +22,15 @@ from ._errors import (
     SateAIsError,
 )
 from ._http import DEFAULT_API_BASE_URL, ApiClient, HttpApiClient
-from ._types import DetectionRequest, DetectionType, Job
+from ._types import AnalysisRequest, AnalysisType, Job
 from ._version import __version__
 
-DETECT_ENDPOINTS: tuple[DetectionType, ...] = (
-    DetectionType.SHIP,
-    DetectionType.OILSLICK,
-    DetectionType.NEWBUILDING,
-    DetectionType.DISAPPEARBUILDING,
-    DetectionType.TIMESERIES,
+ANALYZE_ENDPOINTS: tuple[AnalysisType, ...] = (
+    AnalysisType.SHIP,
+    AnalysisType.OILSLICK,
+    AnalysisType.NEWBUILDING,
+    AnalysisType.DISAPPEARBUILDING,
+    AnalysisType.TIMESERIES,
 )
 
 
@@ -78,7 +78,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True, metavar="<command>")
 
     _add_login(sub)
-    _add_detect(sub)
+    _add_analyze(sub)
     _add_jobs(sub)
     return p
 
@@ -89,11 +89,11 @@ def _add_login(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(func=_cmd_login)
 
 
-def _add_detect(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser("detect", help="Submit a new detection job")
-    detect_sub = p.add_subparsers(dest="detect_type", required=True, metavar="<detection_type>")
-    for dt in DETECT_ENDPOINTS:
-        sp = detect_sub.add_parser(dt.value, help=f"Submit a {dt.value} detection")
+def _add_analyze(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("analyze", help="Submit a new analysis job")
+    analyze_sub = p.add_subparsers(dest="analyze_type", required=True, metavar="<analysis_type>")
+    for dt in ANALYZE_ENDPOINTS:
+        sp = analyze_sub.add_parser(dt.value, help=f"Submit a {dt.value} analysis")
 
         if dt.accepts_scene_or_polygon_date:
             # ship / oilslick: scene_id か polygon+date のどちらか
@@ -114,7 +114,7 @@ def _add_detect(sub: argparse._SubParsersAction) -> None:
             )
         elif dt.requires_date_range:
             # newbuilding / disappearbuilding / timeseries: polygon + date_start + date_end が必須
-            # 必須チェックは DetectionRequest.validate() に集約する
+            # 必須チェックは AnalysisRequest.validate() に集約する
             sp.add_argument("--polygon", help="WKT polygon (EPSG:4326)")
             sp.add_argument("--date-start", help="Start date YYYY-MM-DD")
             sp.add_argument("--date-end", help="End date YYYY-MM-DD")
@@ -142,7 +142,7 @@ def _add_detect(sub: argparse._SubParsersAction) -> None:
             help="Wait timeout in seconds (default: no timeout)",
         )
         sp.add_argument("-o", "--output", help="Write output to file instead of stdout")
-        sp.set_defaults(func=_cmd_detect, detection_type=dt)
+        sp.set_defaults(func=_cmd_analyze, analysis_type=dt)
 
 
 def _add_jobs(sub: argparse._SubParsersAction) -> None:
@@ -175,11 +175,11 @@ def _cmd_login(args: argparse.Namespace, api: ApiClient) -> int:
     return 0
 
 
-def _cmd_detect(args: argparse.Namespace, api: ApiClient | None = None) -> int:
+def _cmd_analyze(args: argparse.Namespace, api: ApiClient | None = None) -> int:
     with _open_api(api) as api_client:
-        # 検出種別ごとに対応する引数が異なるため、未追加の属性は getattr で吸収する
-        request = DetectionRequest(
-            detection_type=args.detection_type,
+        # 解析種別ごとに対応する引数が異なるため、未追加の属性は getattr で吸収する
+        request = AnalysisRequest(
+            analysis_type=args.analysis_type,
             satellite_id=args.satellite_id,
             polygon=getattr(args, "polygon", None),
             scene_id=getattr(args, "scene_id", None),
@@ -191,7 +191,7 @@ def _cmd_detect(args: argparse.Namespace, api: ApiClient | None = None) -> int:
         )
 
         request.validate()
-        job = api_client.submit_detection(request)
+        job = api_client.submit_analysis(request)
 
         if args.wait:
             result = Jobs(api_client).wait(
