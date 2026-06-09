@@ -1,7 +1,7 @@
-"""SDK Client + Detect / Jobs リソース
+"""SDK Client + Analyze / Jobs リソース
 
 `Client` がユーザー向けエントリポイント兼 composition root。
-`Detect` と `Jobs` は `Client` 経由でのみ使うのが想定。
+`Analyze` と `Jobs` は `Client` 経由でのみ使うのが想定。
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from typing import Any
 from ._credentials import load_api_key
 from ._errors import CredentialsNotFoundError, JobFailedError, JobTimeoutError
 from ._http import DEFAULT_API_BASE_URL, ApiClient, HttpApiClient
-from ._types import DetectionRequest, DetectionType, Job
+from ._types import AnalysisRequest, AnalysisType, Job
 
 ENV_API_KEY = "SATEAIS_API_KEY"
 ENV_BASE_URL = "SATEAIS_BASE_URL"
@@ -28,7 +28,7 @@ class Client:
     Example:
         >>> from sateais import Client
         >>> client = Client(api_key="sk_...")
-        >>> job = client.detect.ship(scene_id="S1A_...")
+        >>> job = client.analyze.ship(scene_id="S1A_...")
         >>> result = client.jobs.wait(job.job_id)
 
     Args:
@@ -71,7 +71,7 @@ class Client:
             self._api = api
             self._owns_api = False
 
-        self.detect = Detect(self._api)
+        self.analyze = Analyze(self._api)
         self.jobs = Jobs(self._api)
 
     def close(self) -> None:
@@ -86,10 +86,10 @@ class Client:
         self.close()
 
 
-class Detect:
-    """検出ジョブ投入用ファサード
+class Analyze:
+    """解析ジョブ投入用ファサード
 
-    各メソッドは DetectionRequest を構築・検証して ApiClient に投げる。
+    各メソッドは AnalysisRequest を構築・検証して ApiClient に投げる。
     """
 
     def __init__(self, api: ApiClient):
@@ -110,8 +110,8 @@ class Detect:
         `scene_id` 指定、または `polygon + date` 指定のどちらかを与える。
         """
         return self._submit(
-            DetectionRequest(
-                detection_type=DetectionType.SHIP,
+            AnalysisRequest(
+                analysis_type=AnalysisType.SHIP,
                 scene_id=scene_id,
                 polygon=polygon,
                 date=date,
@@ -136,8 +136,8 @@ class Detect:
         `scene_id` 指定、または `polygon + date` 指定のどちらかを与える。
         """
         return self._submit(
-            DetectionRequest(
-                detection_type=DetectionType.OILSLICK,
+            AnalysisRequest(
+                analysis_type=AnalysisType.OILSLICK,
                 scene_id=scene_id,
                 polygon=polygon,
                 date=date,
@@ -161,8 +161,8 @@ class Detect:
         polygon + date_start + date_end が必須。ポリゴン面積上限 30,000 km²。
         """
         return self._submit(
-            DetectionRequest(
-                detection_type=DetectionType.NEWBUILDING,
+            AnalysisRequest(
+                analysis_type=AnalysisType.NEWBUILDING,
                 satellite_id=satellite_id,
                 polygon=polygon,
                 date_start=date_start,
@@ -185,8 +185,8 @@ class Detect:
         polygon + date_start + date_end が必須。ポリゴン面積上限 30,000 km²。
         """
         return self._submit(
-            DetectionRequest(
-                detection_type=DetectionType.DISAPPEARBUILDING,
+            AnalysisRequest(
+                analysis_type=AnalysisType.DISAPPEARBUILDING,
                 satellite_id=satellite_id,
                 polygon=polygon,
                 date_start=date_start,
@@ -209,8 +209,8 @@ class Detect:
         polygon + date_start + date_end が必須。面積 50 km² 以下、期間 3 年以内。
         """
         return self._submit(
-            DetectionRequest(
-                detection_type=DetectionType.TIMESERIES,
+            AnalysisRequest(
+                analysis_type=AnalysisType.TIMESERIES,
                 satellite_id=satellite_id,
                 polygon=polygon,
                 date_start=date_start,
@@ -219,9 +219,9 @@ class Detect:
             )
         )
 
-    def _submit(self, request: DetectionRequest) -> Job:
+    def _submit(self, request: AnalysisRequest) -> Job:
         request.validate()
-        return self._api.submit_detection(request)
+        return self._api.submit_analysis(request)
 
 
 class Jobs:

@@ -19,14 +19,14 @@ pip install sateais
 from sateais import Client
 
 client = Client()                                  # 認証は自動解決
-job = client.detect.ship(scene_id="S1A_IW_GRDH_...")
+job = client.analyze.ship(scene_id="S1A_IW_GRDH_...")
 result = client.jobs.wait(job.job_id)              # 完了まで同期 polling
 print(len(result["features"]), "ships detected")
 ```
 
 ```bash
 sateais login --api-key sk_live_xxxxx
-sateais detect ship --scene-id S1A_IW_GRDH_... --wait -o ships.geojson
+sateais analyze ship --scene-id S1A_IW_GRDH_... --wait -o ships.geojson
 ```
 
 ## 認証
@@ -43,15 +43,15 @@ export SATEAIS_API_KEY=sk_live_xxxxx
 
 ## SDK
 
-### 検出メソッド
+### 解析メソッド
 
 | メソッド | 入力パターン |
 |---|---|
-| `client.detect.ship(...)` | `scene_id` または `polygon`+`date` |
-| `client.detect.oilslick(...)` | 同上 |
-| `client.detect.newbuilding(...)` | `polygon`+`date_start`+`date_end` |
-| `client.detect.disappearbuilding(...)` | 同上 |
-| `client.detect.timeseries(...)` | 同上 |
+| `client.analyze.ship(...)` | `scene_id` または `polygon`+`date` |
+| `client.analyze.oilslick(...)` | 同上 |
+| `client.analyze.newbuilding(...)` | `polygon`+`date_start`+`date_end` |
+| `client.analyze.disappearbuilding(...)` | 同上 |
+| `client.analyze.timeseries(...)` | 同上 |
 
 詳細パラメータは [API リファレンス](https://docs.spcsft.com/) 参照。
 
@@ -81,13 +81,13 @@ geojson = client.jobs.wait(
 | `JobFailedError` | `wait()` 中にジョブが failed |
 | `JobTimeoutError` | `wait()` がタイムアウト |
 | `CredentialsNotFoundError` | APIキーが解決できない |
-| `InvalidDetectionRequestError` | 必須パラメータの組合せ不正 |
+| `InvalidAnalysisRequestError` | 必須パラメータの組合せ不正 |
 
 ## CLI
 
 ```bash
 sateais login [--api-key sk_...]                  # APIキーを保存（省略時はプロンプト）
-sateais detect <endpoint> [options] [--wait] [-o FILE]
+sateais analyze <endpoint> [options] [--wait] [-o FILE]
 sateais jobs status <job_id>
 sateais jobs result <job_id> [-o FILE]
 sateais jobs wait   <job_id> [-o FILE] [--poll-interval N] [--timeout N]

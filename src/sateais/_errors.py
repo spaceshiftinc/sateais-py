@@ -75,5 +75,5 @@ class CredentialsNotFoundError(SateAIsError):
     """APIキーが解決できなかった"""
 
 
-class InvalidDetectionRequestError(SateAIsError):
-    """DetectionRequest のパラメータ組み合わせが不正"""
+class InvalidAnalysisRequestError(SateAIsError):
+    """AnalysisRequest のパラメータ組み合わせが不正"""

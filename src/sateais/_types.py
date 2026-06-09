@@ -1,7 +1,7 @@
 """エンティティ・値オブジェクト
 
-Job / JobStatus / DetectionType / DetectionRequest を提供する。
-ドメインルールの検証 (`DetectionRequest.validate`) もここに置く。
+Job / JobStatus / AnalysisType / AnalysisRequest を提供する。
+ドメインルールの検証 (`AnalysisRequest.validate`) もここに置く。
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from ._errors import InvalidDetectionRequestError
+from ._errors import InvalidAnalysisRequestError
 
 
 class JobStatus(str, Enum):
@@ -69,8 +69,8 @@ class Job:
         return self.status == JobStatus.FAILED
 
 
-class DetectionType(str, Enum):
-    """検出ジョブの種別"""
+class AnalysisType(str, Enum):
+    """解析ジョブの種別"""
 
     SHIP = "ship"
     OILSLICK = "oilslick"
@@ -81,26 +81,26 @@ class DetectionType(str, Enum):
     @property
     def accepts_scene_or_polygon_date(self) -> bool:
         """この種別のジョブが scene_id / polygon + date データを受け入れるか"""
-        return self in (DetectionType.SHIP, DetectionType.OILSLICK)
+        return self in (AnalysisType.SHIP, AnalysisType.OILSLICK)
 
     @property
     def requires_date_range(self) -> bool:
         """この種別のジョブが polygon + start_date / end_date データを必須とするか"""
         return self in (
-            DetectionType.NEWBUILDING,
-            DetectionType.DISAPPEARBUILDING,
-            DetectionType.TIMESERIES,
+            AnalysisType.NEWBUILDING,
+            AnalysisType.DISAPPEARBUILDING,
+            AnalysisType.TIMESERIES,
         )
 
 
 @dataclass(frozen=True)
-class DetectionRequest:
-    """検出ジョブの入力パラメータ（統一形式）
+class AnalysisRequest:
+    """解析ジョブの入力パラメータ（統一形式）
 
     全種別を扱える共通 DTO。組み合わせの妥当性は `validate()` で検証する。
 
     Attributes:
-        detection_type: 検出種別
+        analysis_type: 解析種別
         satellite_id: 衛星ID。現状の対応値は "sentinel-1"（デフォルト）。
             今後対応衛星が増えた場合は他の値も指定可能になる。
         scene_id: シーンID（ship/oilslick のシーン指定モード）
@@ -112,7 +112,7 @@ class DetectionRequest:
         orbit_direction: "ascending" / "descending"
     """
 
-    detection_type: DetectionType
+    analysis_type: AnalysisType
     satellite_id: str = "sentinel-1"
     scene_id: str | None = None
     polygon: str | None = None
@@ -126,21 +126,21 @@ class DetectionRequest:
         """必須パラメータの組み合わせを検証する
 
         Raises:
-            InvalidDetectionRequestError: 組み合わせが不正な場合
+            InvalidAnalysisRequestError: 組み合わせが不正な場合
         """
-        t = self.detection_type
+        t = self.analysis_type
         if t.accepts_scene_or_polygon_date:
             has_scene = bool(self.scene_id)
             has_polygon_date = bool(self.polygon) and bool(self.date)
             if has_scene == has_polygon_date:
-                raise InvalidDetectionRequestError(
+                raise InvalidAnalysisRequestError(
                     f"{t.value}: specify exactly one of scene_id OR polygon+date "
                     f"(got scene_id={has_scene}, polygon={bool(self.polygon)}, "
                     f"date={bool(self.date)})"
                 )
         elif t.requires_date_range:
             if not (self.polygon and self.date_start and self.date_end):
-                raise InvalidDetectionRequestError(
+                raise InvalidAnalysisRequestError(
                     f"{t.value} requires polygon, date_start, and date_end"
                 )
 

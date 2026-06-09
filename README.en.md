@@ -20,14 +20,14 @@ This package includes **both the SDK and the CLI**.
 from sateais import Client
 
 client = Client()                                  # credentials resolved automatically
-job = client.detect.ship(scene_id="S1A_IW_GRDH_...")
+job = client.analyze.ship(scene_id="S1A_IW_GRDH_...")
 result = client.jobs.wait(job.job_id)              # synchronous polling until completion
 print(len(result["features"]), "ships detected")
 ```
 
 ```bash
 sateais login --api-key sk_live_xxxxx
-sateais detect ship --scene-id S1A_IW_GRDH_... --wait -o ships.geojson
+sateais analyze ship --scene-id S1A_IW_GRDH_... --wait -o ships.geojson
 ```
 
 ## Authentication
@@ -44,15 +44,15 @@ export SATEAIS_API_KEY=sk_live_xxxxx
 
 ## SDK
 
-### Detection methods
+### Analysis methods
 
 | Method | Input pattern |
 |---|---|
-| `client.detect.ship(...)` | `scene_id`, or `polygon`+`date` |
-| `client.detect.oilslick(...)` | Same as above |
-| `client.detect.newbuilding(...)` | `polygon`+`date_start`+`date_end` |
-| `client.detect.disappearbuilding(...)` | Same as above |
-| `client.detect.timeseries(...)` | Same as above |
+| `client.analyze.ship(...)` | `scene_id`, or `polygon`+`date` |
+| `client.analyze.oilslick(...)` | Same as above |
+| `client.analyze.newbuilding(...)` | `polygon`+`date_start`+`date_end` |
+| `client.analyze.disappearbuilding(...)` | Same as above |
+| `client.analyze.timeseries(...)` | Same as above |
 
 See the [API reference](https://docs.spcsft.com/) for detailed parameters.
 
@@ -82,13 +82,13 @@ geojson = client.jobs.wait(
 | `JobFailedError` | Job failed during `wait()` |
 | `JobTimeoutError` | `wait()` timed out |
 | `CredentialsNotFoundError` | API key could not be resolved |
-| `InvalidDetectionRequestError` | Invalid combination of required parameters |
+| `InvalidAnalysisRequestError` | Invalid combination of required parameters |
 
 ## CLI
 
 ```bash
 sateais login [--api-key sk_...]                  # save the API key (prompts if omitted)
-sateais detect <endpoint> [options] [--wait] [-o FILE]
+sateais analyze <endpoint> [options] [--wait] [-o FILE]
 sateais jobs status <job_id>
 sateais jobs result <job_id> [-o FILE]
 sateais jobs wait   <job_id> [-o FILE] [--poll-interval N] [--timeout N]

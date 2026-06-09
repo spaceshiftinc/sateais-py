@@ -13,11 +13,11 @@
 src/sateais/
 ├── __init__.py        # public API の再エクスポート
 ├── _version.py
-├── _types.py          # Job, JobStatus, DetectionType, DetectionRequest（+validate）
+├── _types.py          # Job, JobStatus, AnalysisType, AnalysisRequest（+validate）
 ├── _errors.py         # 例外階層
 ├── _http.py           # ApiClient Protocol + HttpApiClient（唯一の I/O 抽象境界）
 ├── _credentials.py    # load_api_key / save_api_key（具体関数、Protocol なし）
-├── _client.py         # Client + Detect + Jobs（ユーザー向けファサード）
+├── _client.py         # Client + Analyze + Jobs（ユーザー向けファサード）
 └── cli.py             # argparse CLI（自身が composition root）
 ```
 
@@ -50,7 +50,7 @@ _credentials.py            (filesystem 専用、横参照なし)
 # _http.py
 @runtime_checkable
 class ApiClient(Protocol):
-    def submit_detection(self, request: DetectionRequest) -> Job: ...
+    def submit_analysis(self, request: AnalysisRequest) -> Job: ...
     def get_job(self, job_id: str) -> Job: ...
     def get_job_result(self, job_id: str) -> dict[str, Any]: ...
     def close(self) -> None: ...
@@ -75,12 +75,12 @@ class ApiClient(Protocol):
 
 ## 検証ロジックの置き場所
 
-`DetectionRequest.validate()` メソッドに集約。
-`Detect._submit()` と `cli._cmd_detect` が submit 直前に呼ぶ。
+`AnalysisRequest.validate()` メソッドに集約。
+`Analyze._submit()` と `cli._cmd_analyze` が submit 直前に呼ぶ。
 
 ```python
 @dataclass(frozen=True)
-class DetectionRequest:
+class AnalysisRequest:
     ...
     def validate(self) -> None:
         # 必須パラメータの組み合わせを検証
@@ -99,12 +99,12 @@ class DetectionRequest:
 
 ## 新しいエンドポイントを追加する
 
-1. `_types.py` の `DetectionType` enum に値を追加
+1. `_types.py` の `AnalysisType` enum に値を追加
    - 必要なら `accepts_scene_or_polygon_date` / `requires_date_range` プロパティを更新
-2. `DetectionRequest.validate()` のルール分岐が既存パターンで賄えるか確認
-3. `_client.py` の `Detect` クラスに新しいメソッドを追加
-4. CLI 側は `DETECT_ENDPOINTS` の Enum 列挙で自動対応（変更不要）
-5. `tests/test_types.py` で `validate` のテスト、`tests/test_client.py` で `Detect.<name>()` のテストを追加
+2. `AnalysisRequest.validate()` のルール分岐が既存パターンで賄えるか確認
+3. `_client.py` の `Analyze` クラスに新しいメソッドを追加
+4. CLI 側は `ANALYZE_ENDPOINTS` の Enum 列挙で自動対応（変更不要）
+5. `tests/test_types.py` で `validate` のテスト、`tests/test_client.py` で `Analyze.<name>()` のテストを追加
 
 ## HTTP レスポンス形式が変わった場合
 
@@ -123,10 +123,10 @@ class DetectionRequest:
 ```
 tests/
 ├── conftest.py            # FakeApiClient + make_job ヘルパー
-├── test_types.py          # JobStatus / Job / DetectionType / DetectionRequest
+├── test_types.py          # JobStatus / Job / AnalysisType / AnalysisRequest
 ├── test_errors.py         # (今のところ test_types に統合)
 ├── test_http.py           # HttpApiClient（httpx.MockTransport）
 ├── test_credentials.py    # load_api_key / save_api_key（tmp_path）
-├── test_client.py         # Client / Detect / Jobs（FakeApiClient + monkeypatch time）
+├── test_client.py         # Client / Analyze / Jobs（FakeApiClient + monkeypatch time）
 └── test_cli.py            # CLI（FakeApiClient 注入）
 ```

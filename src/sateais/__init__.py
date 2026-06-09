@@ -5,7 +5,7 @@ Sentinel-1 SAR 衛星画像解析プラットフォーム SateAIs の公式 Pyth
 Quickstart:
     >>> from sateais import Client
     >>> client = Client(api_key="sk_...")
-    >>> job = client.detect.ship(scene_id="S1A_IW_GRDH_...")
+    >>> job = client.analyze.ship(scene_id="S1A_IW_GRDH_...")
     >>> result = client.jobs.wait(job.job_id)
 
 内部構造:
@@ -21,7 +21,7 @@ from ._errors import (
     AuthenticationError,
     CredentialsNotFoundError,
     InsufficientCreditsError,
-    InvalidDetectionRequestError,
+    InvalidAnalysisRequestError,
     JobFailedError,
     JobTimeoutError,
     NotFoundError,
@@ -30,7 +30,7 @@ from ._errors import (
     ValidationError,
 )
 from ._http import ApiClient
-from ._types import DetectionRequest, DetectionType, Job, JobStatus
+from ._types import AnalysisRequest, AnalysisType, Job, JobStatus
 from ._version import __version__
 
 __all__ = [
@@ -40,8 +40,8 @@ __all__ = [
     # entities
     "Job",
     "JobStatus",
-    "DetectionRequest",
-    "DetectionType",
+    "AnalysisRequest",
+    "AnalysisType",
     # port (for advanced DI)
     "ApiClient",
     # credentials helpers
@@ -58,5 +58,5 @@ __all__ = [
     "JobFailedError",
     "JobTimeoutError",
     "CredentialsNotFoundError",
-    "InvalidDetectionRequestError",
+    "InvalidAnalysisRequestError",
 ]
