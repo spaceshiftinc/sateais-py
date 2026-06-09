@@ -64,6 +64,82 @@ def test_analyze_with_wait_outputs_geojson(capsys: pytest.CaptureFixture[str]) -
     assert out["type"] == "FeatureCollection"
 
 
+def test_analyze_with_json_params(capsys: pytest.CaptureFixture[str]) -> None:
+    api = FakeApiClient(next_job=make_job(status=JobStatus.PENDING))
+    rc = main(
+        [
+            "analyze",
+            "newbuilding",
+            "--json",
+            '{"polygon": "POLYGON((0 0,1 0,1 1,0 0))", '
+            '"date_start": "2024-01-01", "date_end": "2024-02-01"}',
+        ],
+        api=api,
+    )
+    assert rc == 0
+    req = api.submitted[0]
+    assert req.polygon == "POLYGON((0 0,1 0,1 1,0 0))"
+    assert req.date_start == "2024-01-01"
+    assert req.date_end == "2024-02-01"
+
+
+def test_analyze_flag_overrides_json(capsys: pytest.CaptureFixture[str]) -> None:
+    api = FakeApiClient(next_job=make_job(status=JobStatus.PENDING))
+    rc = main(
+        [
+            "analyze",
+            "ship",
+            "--json",
+            '{"scene_id": "S1A_FROM_JSON"}',
+            "--scene-id",
+            "S1A_FROM_FLAG",
+        ],
+        api=api,
+    )
+    assert rc == 0
+    assert api.submitted[0].scene_id == "S1A_FROM_FLAG"
+
+
+def test_analyze_json_from_file(tmp_path: Path) -> None:
+    api = FakeApiClient(next_job=make_job(status=JobStatus.PENDING))
+    params = tmp_path / "params.json"
+    params.write_text('{"scene_id": "S1A_FILE"}')
+    rc = main(["analyze", "ship", "--json", f"@{params}"], api=api)
+    assert rc == 0
+    assert api.submitted[0].scene_id == "S1A_FILE"
+
+
+def test_analyze_json_from_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+    import io
+
+    api = FakeApiClient(next_job=make_job(status=JobStatus.PENDING))
+    monkeypatch.setattr("sys.stdin", io.StringIO('{"scene_id": "S1A_STDIN"}'))
+    rc = main(["analyze", "ship", "--json", "-"], api=api)
+    assert rc == 0
+    assert api.submitted[0].scene_id == "S1A_STDIN"
+
+
+def test_analyze_json_invalid_returns_error(capsys: pytest.CaptureFixture[str]) -> None:
+    api = FakeApiClient(next_job=make_job())
+    rc = main(["analyze", "ship", "--json", "{not json}"], api=api)
+    assert rc == 1
+    assert "invalid JSON" in capsys.readouterr().err
+
+
+def test_analyze_json_unknown_key_returns_error(capsys: pytest.CaptureFixture[str]) -> None:
+    api = FakeApiClient(next_job=make_job())
+    rc = main(["analyze", "ship", "--json", '{"scene_id": "S1A_X", "bogus": 1}'], api=api)
+    assert rc == 1
+    assert "unknown keys: bogus" in capsys.readouterr().err
+
+
+def test_analyze_json_not_object_returns_error(capsys: pytest.CaptureFixture[str]) -> None:
+    api = FakeApiClient(next_job=make_job())
+    rc = main(["analyze", "ship", "--json", "[1, 2]"], api=api)
+    assert rc == 1
+    assert "must be a JSON object" in capsys.readouterr().err
+
+
 def test_jobs_status(capsys: pytest.CaptureFixture[str]) -> None:
     api = FakeApiClient(next_job=make_job(status=JobStatus.COMPLETED))
     rc = main(["jobs", "status", "j-1"], api=api)

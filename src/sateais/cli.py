@@ -33,6 +33,18 @@ ANALYZE_ENDPOINTS: tuple[AnalysisType, ...] = (
     AnalysisType.TIMESERIES,
 )
 
+# --json でまとめて指定できる解析パラメータのキー
+_PARAM_KEYS: tuple[str, ...] = (
+    "satellite_id",
+    "scene_id",
+    "polygon",
+    "date",
+    "date_start",
+    "date_end",
+    "date_direction",
+    "orbit_direction",
+)
+
 
 def main(argv: list[str] | None = None, *, api: ApiClient | None = None) -> int:
     """CLI エントリポイント
@@ -120,8 +132,17 @@ def _add_analyze(sub: argparse._SubParsersAction) -> None:
             sp.add_argument("--date-end", help="End date YYYY-MM-DD")
 
         sp.add_argument(
+            "--json",
+            dest="json_params",
+            metavar="JSON",
+            help=(
+                "Analysis parameters as a JSON object string, '@FILE' to read a file, "
+                "or '-' for stdin. Individual flags override JSON values."
+            ),
+        )
+        sp.add_argument(
             "--satellite-id",
-            default="sentinel-1",
+            default=None,
             help="Satellite ID. Currently 'sentinel-1' is the only supported value (default).",
         )
         sp.add_argument(
@@ -175,21 +196,71 @@ def _cmd_login(args: argparse.Namespace, api: ApiClient) -> int:
     return 0
 
 
+def _build_analysis_request(args: argparse.Namespace) -> AnalysisRequest:
+    """CLI 引数（--json + 個別フラグ）から AnalysisRequest を組み立てる
+
+    --json で渡した JSON オブジェクトをベースに、明示指定された個別フラグで上書きする。
+    解析種別ごとに対応する引数が異なるため、未追加の属性は getattr で吸収する。
+    """
+    params = _load_json_params(getattr(args, "json_params", None))
+
+    # 明示指定された個別フラグ（None でない）で JSON 値を上書きする
+    for key in _PARAM_KEYS:
+        value = getattr(args, key, None)
+        if value is not None:
+            params[key] = value
+
+    return AnalysisRequest(
+        analysis_type=args.analysis_type,
+        satellite_id=params.get("satellite_id") or "sentinel-1",
+        scene_id=params.get("scene_id"),
+        polygon=params.get("polygon"),
+        date=params.get("date"),
+        date_start=params.get("date_start"),
+        date_end=params.get("date_end"),
+        date_direction=params.get("date_direction"),
+        orbit_direction=params.get("orbit_direction"),
+    )
+
+
+def _load_json_params(raw: str | None) -> dict[str, Any]:
+    """--json の値を読み込んで解析パラメータの dict に変換する
+
+    raw が None なら空 dict を返す。'@PATH' でファイル読込、'-' で標準入力、
+    それ以外は JSON 文字列そのものとして解釈する。
+
+    Raises:
+        ValueError: JSON が不正、オブジェクトでない、または未知のキーを含む場合
+    """
+    if raw is None:
+        return {}
+
+    if raw == "-":
+        text = sys.stdin.read()
+    elif raw.startswith("@"):
+        with open(raw[1:], encoding="utf-8") as f:
+            text = f.read()
+    else:
+        text = raw
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"--json: invalid JSON: {e}") from e
+
+    if not isinstance(data, dict):
+        raise ValueError("--json: must be a JSON object")
+
+    unknown = set(data) - set(_PARAM_KEYS)
+    if unknown:
+        raise ValueError(f"--json: unknown keys: {', '.join(sorted(unknown))}")
+
+    return data
+
+
 def _cmd_analyze(args: argparse.Namespace, api: ApiClient | None = None) -> int:
     with _open_api(api) as api_client:
-        # 解析種別ごとに対応する引数が異なるため、未追加の属性は getattr で吸収する
-        request = AnalysisRequest(
-            analysis_type=args.analysis_type,
-            satellite_id=args.satellite_id,
-            polygon=getattr(args, "polygon", None),
-            scene_id=getattr(args, "scene_id", None),
-            date=getattr(args, "date", None),
-            date_start=getattr(args, "date_start", None),
-            date_end=getattr(args, "date_end", None),
-            date_direction=getattr(args, "date_direction", None),
-            orbit_direction=getattr(args, "orbit_direction", None),
-        )
-
+        request = _build_analysis_request(args)
         request.validate()
         job = api_client.submit_analysis(request)
 
