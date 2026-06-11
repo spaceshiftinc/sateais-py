@@ -30,6 +30,7 @@ src/sateais/
 ├── _errors.py         # 例外
 ├── _http.py           # ApiClient Protocol + HttpApiClient（唯一の Port）
 ├── _credentials.py    # load_api_key / save_api_key 関数
+├── _spinner.py        # 待機中の衛星「信号パルス」アスキーアニメーション（CLI 専用）
 ├── _client.py         # Client + Analyze + Jobs
 └── cli.py             # argparse CLI
 ```
@@ -39,6 +40,7 @@ src/sateais/
 - `_types.py` / `_errors.py`: 標準ライブラリのみ
 - `_http.py`: `httpx` 依存はここに閉じる
 - `_credentials.py`: `json` / `pathlib` のみ
+- `_spinner.py`: `os` / `shutil` / `sys` / `threading` のみ（cli からのみ利用）
 - `_client.py` / `cli.py`: 上のすべてを結線
 
 ### 設計判断: なぜ Port は ApiClient だけか

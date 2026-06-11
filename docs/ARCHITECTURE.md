@@ -17,6 +17,7 @@ src/sateais/
 ├── _errors.py         # 例外階層
 ├── _http.py           # ApiClient Protocol + HttpApiClient（唯一の I/O 抽象境界）
 ├── _credentials.py    # load_api_key / save_api_key（具体関数、Protocol なし）
+├── _spinner.py        # 待機中の衛星「信号パルス」アスキーアニメーション（stdlib のみ、CLI 専用）
 ├── _client.py         # Client + Analyze + Jobs（ユーザー向けファサード）
 └── cli.py             # argparse CLI（自身が composition root）
 ```
@@ -33,6 +34,7 @@ _http.py                   (ApiClient Protocol + HttpApiClient)
 _types.py , _errors.py     (entities / exceptions, 外部依存なし)
 
 _credentials.py            (filesystem 専用、横参照なし)
+_spinner.py                (CLI 表示専用、stdlib のみ、横参照なし)
 ```
 
 ルール:
@@ -40,6 +42,7 @@ _credentials.py            (filesystem 専用、横参照なし)
 - `_types.py` / `_errors.py` は標準ライブラリのみに依存（外部ライブラリ NG）
 - `_http.py` は `httpx` 依存をここに閉じ込める
 - `_credentials.py` は `json` / `pathlib` 以外に依存しない
+- `_spinner.py` は `os` / `shutil` / `sys` / `threading` 以外に依存しない（CLI からのみ利用）
 - `_client.py` / `cli.py` がすべてを結線する composition root
 
 ## Port の使い分け
@@ -72,6 +75,25 @@ class ApiClient(Protocol):
 
 **判断基準**: 「将来差し替える可能性が現実的にあるか？」「テストで困るか？」の両方が
 弱い場合は Protocol を作らず具体実装を使う。
+
+## 待機中の表示（`_spinner.py`）
+
+`--wait` でジョブ完了を待つ間、`cli._wait_for_job` が `SatelliteSpinner` を起動し、
+衛星 `▭┋▣┋▭` が右へ信号波 `)` を流す「信号パルス」アスキーアニメーションを 1 行で
+表示する（遊び心の演出）。
+
+- 発射リズムは心拍（ハートビート）パターン: 16 フレームのループ内 `{0, 2, 8, 10}` で発射。
+- 波は送信源から毎フレーム右へ 1 進み、距離に応じて減衰する。truecolor 端末では
+  ティール系の明度で、非対応端末ではグリフ濃淡（`) → ) → ·`）で表現する。
+- 送信源は発射フレームだけ明るく（`◉` / 非発射は `◎`）光る。
+- 描画関数は `render=` で差し替え可能（`examples/spinner_gallery.py` に別案あり）。
+
+- **stderr が TTY のときだけ** daemon スレッドでアニメーションする。`NO_COLOR` 指定時や
+  端末幅が狭いときは無効化される（`SatelliteSpinner.enabled`）。
+- 非 TTY（パイプ / リダイレクト / テスト）では従来どおり、ステータス変化時のみ
+  1 行ログ（`cli._process_callback`）にフォールバックする。
+- 結果 GeoJSON は stdout、アニメーション / ログは stderr に分離しているため、
+  `sateais ... --wait > out.geojson` の出力は演出に汚染されない。
 
 ## 検証ロジックの置き場所
 

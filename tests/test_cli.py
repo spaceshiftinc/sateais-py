@@ -174,6 +174,89 @@ def test_invalid_analysis_request_returns_error(
     assert "requires polygon" in capsys.readouterr().err
 
 
+def test_mvv_outputs_mission_vision_value(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = main(["mvv"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Mission" in out
+    assert "Vision" in out
+    assert "Value" in out
+    assert "見えないものを可視化する" in out
+
+
+def test_motomura_non_tty_outputs_static_art(capsys: pytest.CaptureFixture[str]) -> None:
+    # capsys 配下では TTY でないため静的なアヒルを 1 回だけ出す
+    rc = main(["motomura"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "_(o )>" in out
+    assert "\\__/" in out
+
+
+def test_motomura_render_walks_and_waddles() -> None:
+    from sateais.cli import _render_motomura
+
+    first = _render_motomura(0, "")
+    later = _render_motomura(20, "")
+    assert len(first) == 4
+    # フレームが進むと水平位置（左パディング）が変わる
+    assert first != later
+    # 脚は waddle で交互に切り替わる
+    assert first[3].strip() in ("/\\", "\\/")
+    assert _render_motomura(0, "")[3] != _render_motomura(2, "")[3]
+
+
+@pytest.mark.parametrize("cmd", ["orbit", "ping", "aurora", "nightsky"])
+def test_hidden_animation_commands_run(cmd: str, capsys: pytest.CaptureFixture[str]) -> None:
+    # 非 TTY（capsys）では静止画 1 枚を出して終了する
+    rc = main([cmd])
+    assert rc == 0
+    assert capsys.readouterr().out.strip() != ""
+
+
+def test_decode_outputs_text(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = main(["decode", "HELLO", "WORLD"])
+    assert rc == 0
+    assert capsys.readouterr().out.strip() == "HELLO WORLD"
+
+
+def test_scene_decodes_sentinel1_id(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = main(["scene", "S1A_IW_GRDH_1SDV_20240101T000000_20240101T000025_052345_065ABC_1A2B"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Sentinel-1A" in out
+    assert "dual VV+VH" in out
+
+
+def test_scene_invalid_returns_error(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = main(["scene", "not-a-scene-id"])
+    assert rc == 1
+    assert "Sentinel-1 scene ID" in capsys.readouterr().err
+
+
+def test_analyze_ducky_flag_is_accepted(capsys: pytest.CaptureFixture[str]) -> None:
+    api = FakeApiClient(
+        next_job=make_job(status=JobStatus.PENDING),
+        job_sequence=[make_job(status=JobStatus.COMPLETED)],
+        result={"type": "FeatureCollection", "features": []},
+    )
+    rc = main(
+        ["analyze", "ship", "--scene-id", "S1A_X", "--wait", "--poll-interval", "0", "--ducky"],
+        api=api,
+    )
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["type"] == "FeatureCollection"
+
+
+def test_hidden_commands_absent_from_help(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    help_text = capsys.readouterr().out
+    # 隠しコマンドは --help の一覧に出さない
+    for hidden in ("orbit", "ping", "scene", "decode", "aurora", "nightsky", "motomura"):
+        assert hidden not in help_text
+
+
 def test_external_api_is_not_closed_by_cli() -> None:
     api = FakeApiClient(next_job=make_job(status=JobStatus.PENDING))
     main(["analyze", "ship", "--scene-id", "S1A_X"], api=api)

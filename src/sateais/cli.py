@@ -9,10 +9,12 @@ import argparse
 import getpass
 import json
 import os
+import shutil
 import sys
+import time
 from typing import Any
 
-from ._client import ENV_API_KEY, ENV_BASE_URL, Jobs
+from ._client import ENV_API_KEY, ENV_BASE_URL, Jobs, PollCallback
 from ._credentials import load_api_key, save_api_key
 from ._errors import (
     APIError,
@@ -21,7 +23,23 @@ from ._errors import (
     JobTimeoutError,
     SateAIsError,
 )
+from ._fun import (
+    AURORA_STILL,
+    NIGHTSKY_STILL,
+    ORBIT_STILL,
+    PING_STILL,
+    decode_duration,
+    format_scene_info,
+    make_aurora_render,
+    make_decode_render,
+    make_nightsky_render,
+    parse_scene_id,
+    render_orbit,
+    render_ping,
+    supports_truecolor,
+)
 from ._http import DEFAULT_API_BASE_URL, ApiClient, HttpApiClient
+from ._spinner import RenderFn, SatelliteSpinner
 from ._types import AnalysisRequest, AnalysisType, Job
 from ._version import __version__
 
@@ -32,6 +50,39 @@ ANALYZE_ENDPOINTS: tuple[AnalysisType, ...] = (
     AnalysisType.DISAPPEARBUILDING,
     AnalysisType.TIMESERIES,
 )
+
+# スペースシフトの MVV（Mission / Vision / Value）。`sateais mvv` で表示する。
+_MVV_TEXT = """
+SateAIs — Spaceshift Inc.
+
+【 Mission 】
+  衛星データ×AIで
+  見えないものを可視化する
+
+【 Vision 】
+  宇宙からの視点を日常につなぎ
+  人と地球とテクノロジーの共生へ
+
+【 Value 】
+  ・誠意を貫く
+  ・失敗を恐れず挑戦を楽しむ
+  ・大胆に変化する
+  ・未来から逆算する
+  ・新しい価値を共創する
+""".strip()
+
+# `sateais motomura` で歩くアヒル。waddle しながら右へ移動する CLI アニメーション。
+_MOTOMURA_ART = (
+    "   ,~.\n"
+    " _(o )>\n"
+    " \\__/\n"
+    "  ||"
+)
+
+_MOTOMURA_LEGS = ("/\\", "\\/")  # waddle（よちよち歩き）の脚 2 フレーム
+_MOTOMURA_WIDTH = 8  # アヒル 1 体の概ねの幅（折り返し計算用）
+_MOTOMURA_STEP = 2  # 何フレームに 1 マス進むか
+_MOTOMURA_BLINK_LOOP = 24  # まばたきの周期（フレーム）
 
 # --json でまとめて指定できる解析パラメータのキー
 _PARAM_KEYS: tuple[str, ...] = (
@@ -92,6 +143,8 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_login(sub)
     _add_analyze(sub)
     _add_jobs(sub)
+    _add_mvv(sub)
+    _add_hidden(sub)
     return p
 
 
@@ -163,6 +216,8 @@ def _add_analyze(sub: argparse._SubParsersAction) -> None:
             help="Wait timeout in seconds (default: no timeout)",
         )
         sp.add_argument("-o", "--output", help="Write output to file instead of stdout")
+        # 隠しフラグ: 待機スピナーをアヒルに差し替える
+        sp.add_argument("--ducky", action="store_true", help=argparse.SUPPRESS)
         sp.set_defaults(func=_cmd_analyze, analysis_type=dt)
 
 
@@ -185,7 +240,122 @@ def _add_jobs(sub: argparse._SubParsersAction) -> None:
     sp.add_argument("--poll-interval", type=float, default=10.0)
     sp.add_argument("--timeout", type=float, default=None)
     sp.add_argument("-o", "--output", help="Write output to file instead of stdout")
+    sp.add_argument("--ducky", action="store_true", help=argparse.SUPPRESS)
     sp.set_defaults(func=_cmd_jobs_wait)
+
+
+def _add_mvv(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("mvv", help="Show Spaceshift's Mission / Vision / Value")
+    p.set_defaults(func=_cmd_mvv)
+
+
+def _cmd_mvv(args: argparse.Namespace, api: ApiClient | None = None) -> int:
+    del args, api  # 使わない（API キー不要）
+    sys.stdout.write(_MVV_TEXT + "\n")
+    return 0
+
+
+def _add_hidden(sub: argparse._SubParsersAction) -> None:
+    """遊び心のある隠しコマンドを登録する
+
+    help を渡さないことで `sateais --help` の一覧には出さない（隠し要素）。
+    metavar="<command>" によりサブコマンド候補も usage に列挙されない。
+    """
+    # 待機演出を流用したアニメーション系（共通で --duration を持つ）
+    animations = {
+        "motomura": _cmd_motomura,
+        "orbit": _cmd_orbit,
+        "ping": _cmd_ping,
+        "aurora": _cmd_aurora,
+        "nightsky": _cmd_nightsky,
+    }
+    for name, fn in animations.items():
+        p = sub.add_parser(name)
+        p.add_argument("--duration", type=float, default=6.0, help=argparse.SUPPRESS)
+        p.set_defaults(func=fn)
+
+    # decode: 任意のテキストをダウンリンク風に復元
+    p = sub.add_parser("decode")
+    p.add_argument("text", nargs="*", help=argparse.SUPPRESS)
+    p.add_argument("--duration", type=float, default=None, help=argparse.SUPPRESS)
+    p.set_defaults(func=_cmd_decode)
+
+    # scene: Sentinel-1 シーンIDをデコード（地味に実用）
+    p = sub.add_parser("scene")
+    p.add_argument("scene_id")
+    p.set_defaults(func=_cmd_scene)
+
+
+def _render_motomura(frame: int, status: str) -> list[str]:
+    """フレーム番号からアヒルの 4 行を描画する（SatelliteSpinner の RenderFn）
+
+    アヒルは右へ歩き、端に達したら左へ折り返す。脚は 1 マス進むごとに
+    `/\\` と `\\/` を交互に切り替えて waddle を表現し、たまにまばたきする。
+    """
+    del status  # ステータス表示は使わない
+    width = shutil.get_terminal_size(fallback=(80, 24)).columns
+    travel = max(1, width - _MOTOMURA_WIDTH)
+    step = frame // _MOTOMURA_STEP
+    pad = " " * (step % travel)
+    legs = _MOTOMURA_LEGS[step % len(_MOTOMURA_LEGS)]
+    eye = "-" if frame % _MOTOMURA_BLINK_LOOP < 2 else "o"
+    return [
+        f"{pad}   ,~.",
+        f"{pad} _({eye} )>",
+        f"{pad} \\__/",
+        f"{pad}  {legs}",
+    ]
+
+
+def _play_animation(render: RenderFn, *, duration: float, still: str) -> int:
+    """TTY ではアニメーションを duration 秒再生し、非 TTY では静止画を 1 回出す"""
+    with SatelliteSpinner(stream=sys.stdout, render=render) as spinner:
+        if spinner.enabled:
+            time.sleep(duration)
+        else:
+            sys.stdout.write(still + "\n")
+    return 0
+
+
+def _cmd_motomura(args: argparse.Namespace, api: ApiClient | None = None) -> int:
+    del api  # 使わない（API キー不要）
+    return _play_animation(_render_motomura, duration=args.duration, still=_MOTOMURA_ART)
+
+
+def _cmd_orbit(args: argparse.Namespace, api: ApiClient | None = None) -> int:
+    del api
+    return _play_animation(render_orbit, duration=args.duration, still=ORBIT_STILL)
+
+
+def _cmd_ping(args: argparse.Namespace, api: ApiClient | None = None) -> int:
+    del api
+    return _play_animation(render_ping, duration=args.duration, still=PING_STILL)
+
+
+def _cmd_aurora(args: argparse.Namespace, api: ApiClient | None = None) -> int:
+    del api
+    render = make_aurora_render(supports_truecolor())
+    return _play_animation(render, duration=args.duration, still=AURORA_STILL)
+
+
+def _cmd_nightsky(args: argparse.Namespace, api: ApiClient | None = None) -> int:
+    del api
+    render = make_nightsky_render(supports_truecolor())
+    return _play_animation(render, duration=args.duration, still=NIGHTSKY_STILL)
+
+
+def _cmd_decode(args: argparse.Namespace, api: ApiClient | None = None) -> int:
+    del api
+    text = " ".join(args.text) if args.text else "SATEAIS // SIGNAL ACQUIRED"
+    duration = args.duration if args.duration is not None else decode_duration(text)
+    return _play_animation(make_decode_render(text), duration=duration, still=text)
+
+
+def _cmd_scene(args: argparse.Namespace, api: ApiClient | None = None) -> int:
+    del api  # 使わない（API キー不要・ローカルでデコードするだけ）
+    info = parse_scene_id(args.scene_id)
+    sys.stdout.write(format_scene_info(args.scene_id, info) + "\n")
+    return 0
 
 
 def _cmd_login(args: argparse.Namespace, api: ApiClient) -> int:
@@ -265,11 +435,12 @@ def _cmd_analyze(args: argparse.Namespace, api: ApiClient | None = None) -> int:
         job = api_client.submit_analysis(request)
 
         if args.wait:
-            result = Jobs(api_client).wait(
+            result = _wait_for_job(
+                Jobs(api_client),
                 job.job_id,
                 poll_interval=args.poll_interval,
                 timeout=args.timeout,
-                on_poll=_process_callback(),
+                ducky=args.ducky,
             )
             _output_json(result, args.output)
         else:
@@ -293,11 +464,12 @@ def _cmd_jobs_result(args: argparse.Namespace, api: ApiClient | None = None) -> 
 
 def _cmd_jobs_wait(args: argparse.Namespace, api: ApiClient | None = None) -> int:
     with _open_api(api) as api_client:
-        result = Jobs(api_client).wait(
+        result = _wait_for_job(
+            Jobs(api_client),
             args.job_id,
             poll_interval=args.poll_interval,
             timeout=args.timeout,
-            on_poll=_process_callback(),
+            ducky=args.ducky,
         )
         _output_json(result, args.output)
     return 0
@@ -361,7 +533,41 @@ def _output_json(data: dict[str, Any], output_path: str | None) -> None:
         sys.stdout.write(text + "\n")
 
 
-def _process_callback() -> Any:
+def _wait_for_job(
+    jobs: Jobs,
+    job_id: str,
+    *,
+    poll_interval: float,
+    timeout: float | None,
+    ducky: bool = False,
+) -> dict[str, Any]:
+    """ジョブ完了を待ち、結果 GeoJSON を返す
+
+    対話端末（stderr が TTY）では衛星スキャンのアスキーアニメーションを表示し、
+    パイプ/リダイレクト/テスト時は変化時のみ 1 行の進捗ログにフォールバックする。
+    隠しフラグ ``--ducky`` 指定時はスピナーを歩くアヒルに差し替える。
+    """
+    render: RenderFn | None = _render_motomura if ducky else None
+    with SatelliteSpinner(render=render) as spinner:
+        on_poll = _spinner_callback(spinner) if spinner.enabled else _process_callback()
+        return jobs.wait(
+            job_id,
+            poll_interval=poll_interval,
+            timeout=timeout,
+            on_poll=on_poll,
+        )
+
+
+def _spinner_callback(spinner: SatelliteSpinner) -> PollCallback:
+    """ポーリングごとにスピナーの表示ステータスを更新するコールバック"""
+
+    def _cb(job: Job) -> None:
+        spinner.set_status(job.status.value)
+
+    return _cb
+
+
+def _process_callback() -> PollCallback:
     """wait 中の進捗を stderr に出すコールバック（同じ status は重複表示しない）"""
     last: dict[str, str] = {}
 
