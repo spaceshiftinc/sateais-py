@@ -86,7 +86,7 @@ class ApiClient(Protocol):
 - 波は送信源から毎フレーム右へ 1 進み、距離に応じて減衰する。truecolor 端末では
   ティール系の明度で、非対応端末ではグリフ濃淡（`) → ) → ·`）で表現する。
 - 送信源は発射フレームだけ明るく（`◉` / 非発射は `◎`）光る。
-- 描画関数は `render=` で差し替え可能（`examples/spinner_gallery.py` に別案あり）。
+- 描画関数は `render=` で差し替え可能。
 
 - **stderr が TTY のときだけ** daemon スレッドでアニメーションする。`NO_COLOR` 指定時や
   端末幅が狭いときは無効化される（`SatelliteSpinner.enabled`）。
