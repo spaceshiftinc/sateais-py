@@ -7,6 +7,7 @@ TTY 判定・有効/無効の切り替え・描画出力の中身を、TTY を�
 from __future__ import annotations
 
 import io
+import os
 
 import pytest
 
@@ -81,7 +82,7 @@ def test_disabled_when_no_color_set(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_disabled_when_terminal_too_narrow(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=(80, 24): _Size(20))
+    monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=(80, 24): _size(20))
     spinner = SatelliteSpinner(stream=_FakeTTY())
     assert spinner.enabled is False
 
@@ -95,7 +96,7 @@ def test_disabled_spinner_writes_nothing(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_enabled_spinner_animates_and_cleans_up(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("NO_COLOR", raising=False)
-    monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=(80, 24): _Size(80))
+    monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=(80, 24): _size(80))
     stream = _FakeTTY()
     with SatelliteSpinner(stream=stream, interval=0) as spinner:
         assert spinner.enabled is True
@@ -106,9 +107,10 @@ def test_enabled_spinner_animates_and_cleans_up(monkeypatch: pytest.MonkeyPatch)
     assert "▭┋▣┋▭" in out  # 衛星が描画された
 
 
-class _Size:
-    """shutil.get_terminal_size のスタブ（columns だけ持つ）"""
+def _size(columns: int) -> os.terminal_size:
+    """shutil.get_terminal_size のスタブ。
 
-    def __init__(self, columns: int) -> None:
-        self.columns = columns
-        self.lines = 24
+    pytest 自身も `width, _ = shutil.get_terminal_size(...)` で戻り値を
+    アンパックするため、本物と同じアンパック可能な os.terminal_size を返す。
+    """
+    return os.terminal_size((columns, 24))
