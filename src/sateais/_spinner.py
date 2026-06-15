@@ -200,7 +200,9 @@ class SatelliteSpinner:
     def _paint(self, lines: list[str]) -> None:
         """複数行を所定位置に再描画する（2 回目以降はカーソルを先頭行へ戻す）"""
         buf: list[str] = []
-        if not self._first:
+        # 2 行以上のときだけ先頭行へカーソルを戻す。1 行描画では \r だけで足り、
+        # ESC[0A は端末仕様（ECMA-48）上「1 行上へ」と解釈され行がせり上がってしまう。
+        if not self._first and self._line_count > 1:
             buf.append(f"{_ESC}[{self._line_count - 1}A")
         for i, line in enumerate(lines):
             # 行頭へ戻して上書きし、末尾の残りを行末クリアで消す
