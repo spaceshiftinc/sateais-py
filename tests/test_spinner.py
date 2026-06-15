@@ -107,6 +107,28 @@ def test_enabled_spinner_animates_and_cleans_up(monkeypatch: pytest.MonkeyPatch)
     assert "▭┋▣┋▭" in out  # 衛星が描画された
 
 
+def test_single_line_paint_never_emits_cursor_up() -> None:
+    # 1 行描画では ESC[nA を出さない。ESC[0A は端末仕様上「1 行上へ」と解釈され、
+    # フレームごとに行がせり上がって積み重なってしまう（回帰防止）。
+    stream = _FakeTTY()
+    spinner = SatelliteSpinner(stream=stream, interval=0)
+    spinner._paint(["frame-1"])
+    spinner._paint(["frame-2"])
+    spinner._paint(["frame-3"])
+    out = stream.getvalue()
+    assert "\x1b[0A" not in out
+    assert "\x1b[1A" not in out  # 1 行なので上方向移動自体が不要
+
+
+def test_multi_line_paint_returns_cursor_to_top() -> None:
+    # 複数行描画では先頭行へ戻すため ESC[(n-1)A を出す
+    stream = _FakeTTY()
+    spinner = SatelliteSpinner(stream=stream, interval=0)
+    spinner._paint(["a", "b", "c"])  # 3 行
+    spinner._paint(["a", "b", "c"])
+    assert "\x1b[2A" in stream.getvalue()  # 2 行上へ戻す
+
+
 def _size(columns: int) -> os.terminal_size:
     """shutil.get_terminal_size のスタブ。
 
