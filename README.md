@@ -93,6 +93,29 @@ sateais jobs result <job_id> [-o FILE]
 sateais jobs wait   <job_id> [-o FILE] [--poll-interval N] [--timeout N]
 ```
 
+### パラメータを JSON でまとめて渡す
+
+`analyze` の解析パラメータは個別フラグの代わりに `--json` でまとめて指定できます。
+個別フラグを併用した場合は、フラグ側の値が JSON の値を上書きします。
+
+```bash
+# JSON 文字列で指定
+sateais analyze ship --json '{"scene_id": "S1A_IW_GRDH_..."}'
+
+# ファイルから読み込む（@ プレフィクス）
+sateais analyze timeseries --json @params.json
+
+# 標準入力から読み込む（-）
+cat params.json | sateais analyze newbuilding --json -
+
+# JSON をベースに一部だけフラグで上書き
+sateais analyze ship --json @base.json --scene-id S1A_OTHER
+```
+
+JSON に指定できるキー: `satellite_id` / `scene_id` / `polygon` / `date` /
+`date_start` / `date_end` / `date_direction` / `orbit_direction`。
+未知のキーはエラーになります。
+
 ### 終了コード
 
 | コード | 意味 |

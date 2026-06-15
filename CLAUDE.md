@@ -7,7 +7,7 @@
 **`sateais`** — SateAIs（SAR 衛星画像解析プラットフォーム、現状の対応衛星は Sentinel-1）の公式 Python SDK / CLI。
 
 - `pip install sateais` 1 つで **SDK と CLI の両方** が入る（`openai-python` パターン）
-- API 仕様: [products/sateais-api-orchestrator/docs/API.md](../../products/sateais-api-orchestrator/docs/API.md)
+- API 仕様: バックエンド API（非公開）の仕様に準拠
 - 公開予定パッケージ — 後方互換性に注意
 
 ## 技術スタック
@@ -30,6 +30,7 @@ src/sateais/
 ├── _errors.py         # 例外
 ├── _http.py           # ApiClient Protocol + HttpApiClient（唯一の Port）
 ├── _credentials.py    # load_api_key / save_api_key 関数
+├── _spinner.py        # 待機中の衛星「信号パルス」アスキーアニメーション（CLI 専用）
 ├── _client.py         # Client + Analyze + Jobs
 └── cli.py             # argparse CLI
 ```
@@ -39,6 +40,7 @@ src/sateais/
 - `_types.py` / `_errors.py`: 標準ライブラリのみ
 - `_http.py`: `httpx` 依存はここに閉じる
 - `_credentials.py`: `json` / `pathlib` のみ
+- `_spinner.py`: `os` / `shutil` / `sys` / `threading` のみ（cli からのみ利用）
 - `_client.py` / `cli.py`: 上のすべてを結線
 
 ### 設計判断: なぜ Port は ApiClient だけか
@@ -148,6 +150,5 @@ mypy src/sateais                    # 型チェック
 
 ## 関連リポジトリ
 
-- [sateais-api-orchestrator](../../products/sateais-api-orchestrator/) — バックエンド API
-- [sateais-js](../sateais-js/) — JS/TS SDK（将来）
-- [sateais-platform](../../sateais-platform/) — 横断ドキュメント
+- バックエンド API（非公開）
+- sateais-js — JS/TS SDK

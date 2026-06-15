@@ -94,6 +94,29 @@ sateais jobs result <job_id> [-o FILE]
 sateais jobs wait   <job_id> [-o FILE] [--poll-interval N] [--timeout N]
 ```
 
+### Passing parameters as JSON
+
+Instead of individual flags, `analyze` parameters can be supplied together via
+`--json`. When both are given, individual flags override the JSON values.
+
+```bash
+# Inline JSON string
+sateais analyze ship --json '{"scene_id": "S1A_IW_GRDH_..."}'
+
+# Read from a file (@ prefix)
+sateais analyze timeseries --json @params.json
+
+# Read from stdin (-)
+cat params.json | sateais analyze newbuilding --json -
+
+# Use JSON as a base and override individual fields with flags
+sateais analyze ship --json @base.json --scene-id S1A_OTHER
+```
+
+Accepted keys: `satellite_id` / `scene_id` / `polygon` / `date` /
+`date_start` / `date_end` / `date_direction` / `orbit_direction`.
+Unknown keys raise an error.
+
 ### Exit codes
 
 | Code | Meaning |
