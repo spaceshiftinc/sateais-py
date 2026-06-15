@@ -19,9 +19,7 @@ from sateais._fun import (
 
 
 def test_parse_scene_id_grd() -> None:
-    info = parse_scene_id(
-        "S1A_IW_GRDH_1SDV_20240101T000000_20240101T000025_052345_065ABC_1A2B"
-    )
+    info = parse_scene_id("S1A_IW_GRDH_1SDV_20240101T000000_20240101T000025_052345_065ABC_1A2B")
     assert info["mission"] == "Sentinel-1A"
     assert info["mode"] == "Interferometric Wide swath"
     assert info["product"] == "Ground Range Detected"
@@ -37,9 +35,7 @@ def test_parse_scene_id_grd() -> None:
 
 def test_parse_scene_id_slc_double_underscore() -> None:
     # SLC は製品種別がパディング下線で割れる（SLC_ → 'SLC' + ''）
-    info = parse_scene_id(
-        "S1B_IW_SLC__1SSV_20200615T120000_20200615T120025_022000_029ABC_DEAD"
-    )
+    info = parse_scene_id("S1B_IW_SLC__1SSV_20200615T120000_20200615T120025_022000_029ABC_DEAD")
     assert info["mission"] == "Sentinel-1B"
     assert info["product"] == "Single Look Complex"
     assert info["polarisation"] == "single VV"

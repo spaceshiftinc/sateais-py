@@ -241,9 +241,7 @@ def make_aurora_render(color: bool) -> RenderFn:
         for y in range(_AURORA_H):
             chars: list[str] = []
             for x in range(_AURORA_W):
-                wave = math.sin(x / 5.0 + frame * 0.20 + y * 0.5) + math.sin(
-                    x / 9.0 - frame * 0.13
-                )
+                wave = math.sin(x / 5.0 + frame * 0.20 + y * 0.5) + math.sin(x / 9.0 - frame * 0.13)
                 band = (wave + 2) / 4  # 0..1
                 level = band * (_AURORA_H - 1)
                 if abs(level - y) >= 1.1:

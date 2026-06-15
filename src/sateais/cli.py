@@ -72,12 +72,7 @@ SateAIs — Spaceshift Inc.
 """.strip()
 
 # `sateais motomura` で歩くアヒル。waddle しながら右へ移動する CLI アニメーション。
-_MOTOMURA_ART = (
-    "   ,~.\n"
-    " _(o )>\n"
-    " \\__/\n"
-    "  ||"
-)
+_MOTOMURA_ART = "   ,~.\n _(o )>\n \\__/\n  ||"
 
 _MOTOMURA_LEGS = ("/\\", "\\/")  # waddle（よちよち歩き）の脚 2 フレーム
 _MOTOMURA_WIDTH = 8  # アヒル 1 体の概ねの幅（折り返し計算用）
