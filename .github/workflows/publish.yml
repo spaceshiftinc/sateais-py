@@ -7,6 +7,12 @@ run-name: >-
 #   develop マージ → TestPyPI へ <version>.dev<run_number> として公開
 #   main    マージ → PyPI へ pyproject.toml の <version> をそのまま公開
 #                    + v<version> タグを作成 + GitHub Release
+#                    （version が aN/bN/rcN を含む場合は prerelease 扱い）
+#
+# バージョン記法ルール（PEP 440）:
+#   - 本番のプレリリースは a/b/rc を使う（例: 0.1.0rc1）→ main マージでそのまま公開
+#   - .dev は TestPyPI 自動採番の予約セグメント。pyproject.toml には書かない
+#     （.dev を2つ繋ぐと PEP 440 違反になるため。例: 0.1.0.dev1.dev9 は不正）
 #
 # 事前準備（PyPI Trusted Publishing）:
 #   1. https://pypi.org/manage/account/publishing/ で "sateais" を Pending Publisher 登録
@@ -54,6 +60,17 @@ jobs:
         id: detect
         run: |
           BASE_VERSION=$(uv run python -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+
+          # .dev は TestPyPI 自動採番の予約セグメント。
+          # pyproject.toml の version に .dev が入っていると TestPyPI で .dev が二重になり
+          # PEP 440 違反（例: 0.1.0.dev1.dev9）になるため、ここで明確に止める。
+          # 本番のプレリリースは a/b/rc を使うこと（例: 0.1.0rc1）。
+          case "$BASE_VERSION" in
+            *.dev*|*.DEV*)
+              echo "::error::pyproject.toml version '${BASE_VERSION}' must not contain '.dev'. Use aN/bN/rcN for pre-releases (e.g. 0.1.0rc1). '.dev' is reserved for TestPyPI auto-builds."
+              exit 1
+              ;;
+          esac
 
           if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
             TARGET="pypi"
@@ -171,7 +188,12 @@ jobs:
           TAG="v${VERSION}"
           git tag "$TAG"
           git push origin "$TAG"
-          gh release create "$TAG" \
+          # a/b/rc を含むプレリリースは GitHub Release も prerelease 扱いにする
+          PRERELEASE_FLAG=""
+          if echo "$VERSION" | grep -qiE '(a|b|rc)[0-9]+$'; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          gh release create "$TAG" $PRERELEASE_FLAG \
             --title "$TAG" \
             --notes-file CHANGELOG.md \
             dist/*
