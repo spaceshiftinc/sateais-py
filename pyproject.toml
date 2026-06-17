@@ -1,11 +1,11 @@
 [project]
 name = "sateais"
-version = "0.1.0"
+version = "0.1.0rc1"
 description = "SateAIs Python SDK and CLI for SAR satellite image analysis"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "SpaceShift Inc.", email = "support@spcsft.com" }]
+authors = [{ name = "SpaceShift Inc.", email = "console-support@spcsft.com" }]
 keywords = ["sentinel-1", "sar", "satellite", "geospatial", "remote-sensing"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -25,8 +25,9 @@ dependencies = [
 sateais = "sateais.cli:main"
 
 [project.urls]
-Homepage = "https://api.spcsft.com"
-Documentation = "https://api.spcsft.com"
+Homepage = "https://console.spcsft.com"
+Documentation = "https://docs.spcsft.com"
+Repository = "https://github.com/spaceshiftinc/sateais-py"
 
 [project.optional-dependencies]
 dev = [

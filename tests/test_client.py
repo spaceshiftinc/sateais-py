@@ -1,4 +1,4 @@
-"""Client / Detect / Jobs のテスト
+"""Client / Analyze / Jobs のテスト
 
 FakeApiClient で HTTP を排除し、time.sleep / time.monotonic は monkeypatch する。
 """
@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 
 from sateais import (
+    AnalysisType,
     Client,
     CredentialsNotFoundError,
-    DetectionType,
-    InvalidDetectionRequestError,
+    InvalidAnalysisRequestError,
     JobFailedError,
     JobStatus,
     JobTimeoutError,
@@ -48,21 +48,21 @@ def test_client_raises_when_no_credentials() -> None:
         Client(api=FakeApiClient())
 
 
-def test_detect_ship_dispatches_with_correct_request() -> None:
+def test_analyze_ship_dispatches_with_correct_request() -> None:
     api = FakeApiClient(next_job=make_job(status=JobStatus.PENDING))
     client = Client(api_key="sk", api=api)
-    job = client.detect.ship(scene_id="S1A_X")
+    job = client.analyze.ship(scene_id="S1A_X")
 
     assert job.status is JobStatus.PENDING
-    assert api.submitted[0].detection_type is DetectionType.SHIP
+    assert api.submitted[0].analysis_type is AnalysisType.SHIP
     assert api.submitted[0].scene_id == "S1A_X"
 
 
-def test_detect_validates_before_submitting() -> None:
+def test_analyze_validates_before_submitting() -> None:
     api = FakeApiClient(next_job=make_job())
     client = Client(api_key="sk", api=api)
-    with pytest.raises(InvalidDetectionRequestError):
-        client.detect.newbuilding(polygon="POLY", date_start="", date_end="")
+    with pytest.raises(InvalidAnalysisRequestError):
+        client.analyze.newbuilding(polygon="POLY", date_start="", date_end="")
     assert api.submitted == []
 
 

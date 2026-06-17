@@ -21,10 +21,10 @@ from ._errors import (
     RateLimitError,
     ValidationError,
 )
-from ._types import DetectionRequest, Job, JobStatus
+from ._types import AnalysisRequest, Job, JobStatus
 from ._version import __version__
 
-DEFAULT_API_BASE_URL = "https://api.sateais.com/api/v1"
+DEFAULT_API_BASE_URL = "https://api.spcsft.com/api/v1"
 
 _STATUS_CODE_MAP: dict[int, type[APIError]] = {
     400: ValidationError,
@@ -44,7 +44,7 @@ class ApiClient(Protocol):
     HttpApiClient が標準実装。テスト時には Fake と差し替える。
     """
 
-    def submit_detection(self, request: DetectionRequest) -> Job: ...
+    def submit_analysis(self, request: AnalysisRequest) -> Job: ...
     def get_job(self, job_id: str) -> Job: ...
     def get_job_result(self, job_id: str) -> dict[str, Any]: ...
     def close(self) -> None: ...
@@ -87,10 +87,10 @@ class HttpApiClient:
             )
             self.owns_http = True
 
-    def submit_detection(self, request: DetectionRequest) -> Job:
+    def submit_analysis(self, request: AnalysisRequest) -> Job:
         response = self._request(
             "POST",
-            f"/detect/{request.detection_type.value}",
+            f"/analyze/{request.analysis_type.value}",
             json_body=request.to_body(),
         )
         return _job_from_dict(response.json())
