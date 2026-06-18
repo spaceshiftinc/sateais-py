@@ -138,7 +138,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_login(sub)
     _add_analyze(sub)
     _add_jobs(sub)
-    _add_mvv(sub)
+    _add_scene(sub)
     _add_hidden(sub)
     return p
 
@@ -239,9 +239,10 @@ def _add_jobs(sub: argparse._SubParsersAction) -> None:
     sp.set_defaults(func=_cmd_jobs_wait)
 
 
-def _add_mvv(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser("mvv", help="Show Spaceshift's Mission / Vision / Value")
-    p.set_defaults(func=_cmd_mvv)
+def _add_scene(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("scene", help="Decode a Sentinel-1 scene ID into its components")
+    p.add_argument("scene_id")
+    p.set_defaults(func=_cmd_scene)
 
 
 def _cmd_mvv(args: argparse.Namespace, api: ApiClient | None = None) -> int:
@@ -275,10 +276,9 @@ def _add_hidden(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--duration", type=float, default=None, help=argparse.SUPPRESS)
     p.set_defaults(func=_cmd_decode)
 
-    # scene: Sentinel-1 シーンIDをデコード（地味に実用）
-    p = sub.add_parser("scene")
-    p.add_argument("scene_id")
-    p.set_defaults(func=_cmd_scene)
+    # mvv: Spaceshift の Mission / Vision / Value を表示する
+    p = sub.add_parser("mvv")
+    p.set_defaults(func=_cmd_mvv)
 
 
 def _render_motomura(frame: int, status: str) -> list[str]:

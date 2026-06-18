@@ -18,6 +18,7 @@ src/sateais/
 ├── _http.py           # ApiClient Protocol + HttpApiClient（唯一の I/O 抽象境界）
 ├── _credentials.py    # load_api_key / save_api_key（具体関数、Protocol なし）
 ├── _spinner.py        # 待機中の衛星「信号パルス」アスキーアニメーション（stdlib のみ、CLI 専用）
+├── _fun.py            # CLI の隠し要素（演出描画・シーンIDデコード等、stdlib のみ、CLI 専用）
 ├── _client.py         # Client + Analyze + Jobs（ユーザー向けファサード）
 └── cli.py             # argparse CLI（自身が composition root）
 ```
@@ -43,6 +44,7 @@ _spinner.py                (CLI 表示専用、stdlib のみ、横参照なし)
 - `_http.py` は `httpx` 依存をここに閉じ込める
 - `_credentials.py` は `json` / `pathlib` 以外に依存しない
 - `_spinner.py` は `os` / `shutil` / `sys` / `threading` 以外に依存しない（CLI からのみ利用）
+- `_fun.py` は CLI の隠し要素で stdlib のみに依存（CLI からのみ利用、横参照なし）
 - `_client.py` / `cli.py` がすべてを結線する composition root
 
 ## Port の使い分け

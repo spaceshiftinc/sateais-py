@@ -252,9 +252,11 @@ def test_hidden_commands_absent_from_help(capsys: pytest.CaptureFixture[str]) ->
     with pytest.raises(SystemExit):
         main(["--help"])
     help_text = capsys.readouterr().out
-    # 隠しコマンドは --help の一覧に出さない
-    for hidden in ("orbit", "ping", "scene", "decode", "aurora", "nightsky", "motomura"):
+    # 隠しコマンド（mvv 含む）は --help の一覧に出さない
+    for hidden in ("orbit", "ping", "mvv", "decode", "aurora", "nightsky", "motomura"):
         assert hidden not in help_text
+    # 公開コマンドは --help の一覧に出す
+    assert "scene" in help_text
 
 
 def test_external_api_is_not_closed_by_cli() -> None:
