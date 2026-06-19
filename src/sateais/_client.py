@@ -37,12 +37,14 @@ class Client:
         base_url: APIベースURL。未指定時は環境変数 `SATEAIS_BASE_URL`、
                   次に既定の本番URLを使う。
         timeout: HTTPリクエストのタイムアウト秒数。
-        api: ApiClient の差し替え（テスト・カスタム実装用）。
-             指定された場合、`api_key`/`base_url`/`timeout` は無視される
-             （ただし `api_key` の解決は実施され、`client.api_key` 属性に保持される）。
+        api: ApiClient の差し替え（テスト・カスタム実装用）。指定された場合
+             `base_url`/`timeout` は使われず、認証も注入した ApiClient の責務となる。
+             APIキーは best-effort で解決され（できなければ `client.api_key` は None）、
+             解決できなくても例外にはならない。
 
     Raises:
-        CredentialsNotFoundError: APIキーがどこからも解決できなかった場合。
+        CredentialsNotFoundError: `api` 未指定で、かつ APIキーがどこからも
+            解決できなかった場合。
     """
 
     def __init__(
@@ -54,22 +56,26 @@ class Client:
         api: ApiClient | None = None,
     ):
         resolved_key = api_key or os.environ.get(ENV_API_KEY) or load_api_key()
-        if not resolved_key:
-            raise CredentialsNotFoundError(
-                "API key not found. Pass api_key=, set SATEAIS_API_KEY env var, "
-                "or run `sateais login`."
-            )
-
-        resolved_base_url = base_url or os.environ.get(ENV_BASE_URL) or DEFAULT_API_BASE_URL
-        self.api_key = resolved_key
-        self.base_url = resolved_base_url
+        self.base_url = base_url or os.environ.get(ENV_BASE_URL) or DEFAULT_API_BASE_URL
+        self.api_key: str | None
         self._api: ApiClient
-        if api is None:
-            self._api = HttpApiClient(api_key=self.api_key, base_url=self.base_url, timeout=timeout)
-            self._owns_api = True
-        else:
+        if api is not None:
+            # カスタム ApiClient 注入時は認証も注入側の責務とみなし、
+            # APIキーが解決できなくても例外にしない（解決できれば属性に保持）。
+            self.api_key = resolved_key
             self._api = api
             self._owns_api = False
+        else:
+            if not resolved_key:
+                raise CredentialsNotFoundError(
+                    "API key not found. Pass api_key=, set SATEAIS_API_KEY env var, "
+                    "or run `sateais login`."
+                )
+            self.api_key = resolved_key
+            self._api = HttpApiClient(
+                api_key=resolved_key, base_url=self.base_url, timeout=timeout
+            )
+            self._owns_api = True
 
         self.analyze = Analyze(self._api)
         self.jobs = Jobs(self._api)

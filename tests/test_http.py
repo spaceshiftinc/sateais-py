@@ -68,6 +68,30 @@ def test_unknown_status_maps_to_unknown_enum() -> None:
     assert client.get_job("j-1").status is JobStatus.UNKNOWN
 
 
+def test_non_json_success_body_raises_api_error() -> None:
+    """200 でも本文が非 JSON なら生の ValueError ではなく APIError に包む"""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html>not json</html>")
+
+    client = _make_client(handler)
+    with pytest.raises(APIError) as exc:
+        client.get_job("j-1")
+    assert exc.value.status_code == 200
+
+
+def test_network_failure_wraps_to_api_error_with_zero_status() -> None:
+    """接続失敗等の通信エラーは status_code=0 の APIError に包む"""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    client = _make_client(handler)
+    with pytest.raises(APIError) as exc:
+        client.get_job("j-1")
+    assert exc.value.status_code == 0
+
+
 @pytest.mark.parametrize(
     "status_code,expected",
     [

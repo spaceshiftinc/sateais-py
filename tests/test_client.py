@@ -44,8 +44,17 @@ def test_client_uses_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_client_raises_when_no_credentials() -> None:
+    # api 未指定でキーがどこからも解決できない場合のみ例外
     with pytest.raises(CredentialsNotFoundError):
-        Client(api=FakeApiClient())
+        Client()
+
+
+def test_client_injected_api_does_not_require_key() -> None:
+    # カスタム ApiClient 注入時はキーが無くても生成でき、api_key は None
+    api = FakeApiClient(next_job=make_job(status=JobStatus.PENDING))
+    client = Client(api=api)
+    assert client.api_key is None
+    assert client.analyze.ship(scene_id="S1A_X").job_id == "j-1"
 
 
 def test_analyze_ship_dispatches_with_correct_request() -> None:

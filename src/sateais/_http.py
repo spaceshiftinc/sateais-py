@@ -80,7 +80,7 @@ class HttpApiClient:
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
                     "Content-Type": "application/json",
-                    "User-Agent": f"SateAIs Python SDK/{__version__}",
+                    "User-Agent": f"sateais-py/{__version__}",
                 },
                 timeout=timeout,
                 follow_redirects=True,
@@ -93,15 +93,15 @@ class HttpApiClient:
             f"/analyze/{request.analysis_type.value}",
             json_body=request.to_body(),
         )
-        return _job_from_dict(response.json())
+        return _job_from_dict(_decode_json(response))
 
     def get_job(self, job_id: str) -> Job:
         response = self._request("GET", f"/jobs/{job_id}")
-        return _job_from_dict(response.json())
+        return _job_from_dict(_decode_json(response))
 
     def get_job_result(self, job_id: str) -> dict[str, Any]:
         resp = self._request("GET", f"/jobs/{job_id}/result.geojson")
-        return resp.json()
+        return _decode_json(resp)
 
     def close(self) -> None:
         if self.owns_http:
@@ -118,6 +118,20 @@ class HttpApiClient:
         if response.is_success:
             return response
         _raise_api_error(response)
+
+
+def _decode_json(response: httpx.Response) -> Any:
+    """成功レスポンスの JSON ボディをデコードする
+
+    本来 JSON が返るはずのエンドポイントで非 JSON ボディが返った場合でも、
+    生の ValueError ではなく SateAIsError 階層の APIError に包んで送出する。
+    """
+    try:
+        return response.json()
+    except ValueError as e:
+        raise APIError(
+            response.status_code, None, f"Invalid JSON in response body: {e}"
+        ) from e
 
 
 def _job_from_dict(data: dict[str, Any]) -> Job:
