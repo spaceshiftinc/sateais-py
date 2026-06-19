@@ -34,9 +34,9 @@ class JobStatus(str, Enum):
             return cls.UNKNOWN
 
 
-@dataclass
+@dataclass(frozen=True)
 class Job:
-    """ジョブの状態を表すエンティティ
+    """ジョブの状態を表すエンティティ（取得時点のスナップショット、不変）
 
     Attributes:
         job_id: ジョブID（UUID）
