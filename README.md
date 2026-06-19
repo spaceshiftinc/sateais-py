@@ -91,6 +91,7 @@ sateais analyze <endpoint> [options] [--wait] [-o FILE]
 sateais jobs status <job_id>
 sateais jobs result <job_id> [-o FILE]
 sateais jobs wait   <job_id> [-o FILE] [--poll-interval N] [--timeout N]
+sateais scene <scene_id>                          # Sentinel-1 シーンIDを構成要素にデコード
 ```
 
 ### パラメータを JSON でまとめて渡す

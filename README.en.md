@@ -92,6 +92,7 @@ sateais analyze <endpoint> [options] [--wait] [-o FILE]
 sateais jobs status <job_id>
 sateais jobs result <job_id> [-o FILE]
 sateais jobs wait   <job_id> [-o FILE] [--poll-interval N] [--timeout N]
+sateais scene <scene_id>                          # decode a Sentinel-1 scene ID into its components
 ```
 
 ### Passing parameters as JSON

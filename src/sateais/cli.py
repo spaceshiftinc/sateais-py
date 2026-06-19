@@ -138,7 +138,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_login(sub)
     _add_analyze(sub)
     _add_jobs(sub)
-    _add_mvv(sub)
+    _add_scene(sub)
     _add_hidden(sub)
     return p
 
@@ -239,9 +239,10 @@ def _add_jobs(sub: argparse._SubParsersAction) -> None:
     sp.set_defaults(func=_cmd_jobs_wait)
 
 
-def _add_mvv(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser("mvv", help="Show Spaceshift's Mission / Vision / Value")
-    p.set_defaults(func=_cmd_mvv)
+def _add_scene(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("scene", help="Decode a Sentinel-1 scene ID into its components")
+    p.add_argument("scene_id")
+    p.set_defaults(func=_cmd_scene)
 
 
 def _cmd_mvv(args: argparse.Namespace, api: ApiClient | None = None) -> int:
@@ -275,10 +276,9 @@ def _add_hidden(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--duration", type=float, default=None, help=argparse.SUPPRESS)
     p.set_defaults(func=_cmd_decode)
 
-    # scene: Sentinel-1 シーンIDをデコード（地味に実用）
-    p = sub.add_parser("scene")
-    p.add_argument("scene_id")
-    p.set_defaults(func=_cmd_scene)
+    # mvv: Spaceshift の Mission / Vision / Value を表示する
+    p = sub.add_parser("mvv")
+    p.set_defaults(func=_cmd_mvv)
 
 
 def _render_motomura(frame: int, status: str) -> list[str]:
@@ -353,7 +353,7 @@ def _cmd_scene(args: argparse.Namespace, api: ApiClient | None = None) -> int:
     return 0
 
 
-def _cmd_login(args: argparse.Namespace, api: ApiClient) -> int:
+def _cmd_login(args: argparse.Namespace, api: ApiClient | None = None) -> int:
     del api  # 使わない
     api_key = args.api_key or getpass.getpass("Enter API key: ")
     path = save_api_key(api_key)
@@ -403,8 +403,12 @@ def _load_json_params(raw: str | None) -> dict[str, Any]:
     if raw == "-":
         text = sys.stdin.read()
     elif raw.startswith("@"):
-        with open(raw[1:], encoding="utf-8") as f:
-            text = f.read()
+        file_path = raw[1:]
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                text = f.read()
+        except OSError as e:
+            raise ValueError(f"--json: cannot read file {file_path}: {e}") from e
     else:
         text = raw
 
@@ -575,6 +579,9 @@ def _process_callback() -> PollCallback:
 
 
 def _exit_code_for_status(status_code: int) -> int:
+    if status_code == 0:
+        # HTTP ステータスを持たない通信失敗（接続不能・タイムアウト等）は一般エラー扱い
+        return 1
     if status_code in (401, 403):
         return 4
     elif status_code == 402:
