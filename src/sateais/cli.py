@@ -353,7 +353,7 @@ def _cmd_scene(args: argparse.Namespace, api: ApiClient | None = None) -> int:
     return 0
 
 
-def _cmd_login(args: argparse.Namespace, api: ApiClient) -> int:
+def _cmd_login(args: argparse.Namespace, api: ApiClient | None = None) -> int:
     del api  # 使わない
     api_key = args.api_key or getpass.getpass("Enter API key: ")
     path = save_api_key(api_key)
@@ -403,8 +403,12 @@ def _load_json_params(raw: str | None) -> dict[str, Any]:
     if raw == "-":
         text = sys.stdin.read()
     elif raw.startswith("@"):
-        with open(raw[1:], encoding="utf-8") as f:
-            text = f.read()
+        file_path = raw[1:]
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                text = f.read()
+        except OSError as e:
+            raise ValueError(f"--json: cannot read file {file_path}: {e}") from e
     else:
         text = raw
 
@@ -575,6 +579,9 @@ def _process_callback() -> PollCallback:
 
 
 def _exit_code_for_status(status_code: int) -> int:
+    if status_code == 0:
+        # HTTP ステータスを持たない通信失敗（接続不能・タイムアウト等）は一般エラー扱い
+        return 1
     if status_code in (401, 403):
         return 4
     elif status_code == 402:
