@@ -24,7 +24,7 @@ uv tool install -e .
 ```bash
 # テスト
 pytest                                  # 全テスト
-pytest tests/unit/application -v        # 特定レイヤー
+pytest tests/test_client.py -v          # 単一ファイル
 pytest -k test_wait                     # キーワード絞り込み
 
 # Lint / Format

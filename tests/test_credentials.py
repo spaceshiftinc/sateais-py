@@ -38,7 +38,18 @@ def test_save_rejects_empty(tmp_path: Path) -> None:
 
 
 def test_save_sets_restrictive_permission(tmp_path: Path) -> None:
-    p = tmp_path / "credentials"
+    p = tmp_path / ".sateais" / "credentials"
     save_api_key("sk_abc", path=p)
-    mode = p.stat().st_mode & 0o777
-    assert mode == 0o600
+    assert p.stat().st_mode & 0o777 == 0o600
+    # 親ディレクトリも本人のみアクセス可
+    assert p.parent.stat().st_mode & 0o777 == 0o700
+
+
+def test_save_tightens_permission_of_existing_loose_file(tmp_path: Path) -> None:
+    p = tmp_path / "credentials"
+    # 緩いパーミッションの既存ファイルがあっても 0600 に絞り直す
+    p.write_text('{"api_key": "old"}\n', encoding="utf-8")
+    p.chmod(0o644)
+    save_api_key("sk_new", path=p)
+    assert p.stat().st_mode & 0o777 == 0o600
+    assert load_api_key(p) == "sk_new"

@@ -55,13 +55,21 @@ def save_api_key(api_key: str, path: Path | None = None) -> Path:
         raise ValueError("api_key must be non-empty")
     p = path or DEFAULT_CREDENTIALS_PATH
     p.parent.mkdir(parents=True, exist_ok=True)
+    # ディレクトリも本人のみアクセス可に絞る（既存ディレクトリにも適用）
+    try:
+        p.parent.chmod(0o700)
+    except OSError:
+        pass
+    # APIキー本文を書き込む前に 0600 の空ファイルを用意し、
+    # 「生成〜chmod」の間に他ユーザーから読める窓を無くす。
+    p.touch(mode=0o600, exist_ok=True)
+    try:
+        p.chmod(0o600)  # 既存ファイルが緩いパーミッションだった場合に備え再設定
+    except OSError:
+        # パーミッション設定に失敗しても保存自体は成功しているので例外は無視する
+        pass
     p.write_text(
         json.dumps({"api_key": api_key.strip()}, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    try:
-        p.chmod(0o600)
-    except OSError:
-        # パーミッション設定に失敗しても保存自体は成功しているので例外は無視する
-        pass
     return p

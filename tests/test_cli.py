@@ -140,6 +140,28 @@ def test_analyze_json_not_object_returns_error(capsys: pytest.CaptureFixture[str
     assert "must be a JSON object" in capsys.readouterr().err
 
 
+def test_analyze_json_missing_file_returns_error(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    # 存在しない @FILE はトレースバックではなくクリーンなエラーになる
+    api = FakeApiClient(next_job=make_job())
+    missing = tmp_path / "nope.json"
+    rc = main(["analyze", "ship", "--json", f"@{missing}"], api=api)
+    assert rc == 1
+    assert "cannot read file" in capsys.readouterr().err
+
+
+def test_exit_code_for_network_failure_is_general_error() -> None:
+    from sateais.cli import _exit_code_for_status
+
+    # HTTP ステータスを持たない通信失敗（status_code=0）は一般エラー(1)
+    assert _exit_code_for_status(0) == 1
+    assert _exit_code_for_status(401) == 4
+    assert _exit_code_for_status(402) == 5
+    assert _exit_code_for_status(404) == 6
+    assert _exit_code_for_status(503) == 7
+
+
 def test_jobs_status(capsys: pytest.CaptureFixture[str]) -> None:
     api = FakeApiClient(next_job=make_job(status=JobStatus.COMPLETED))
     rc = main(["jobs", "status", "j-1"], api=api)
@@ -252,9 +274,11 @@ def test_hidden_commands_absent_from_help(capsys: pytest.CaptureFixture[str]) ->
     with pytest.raises(SystemExit):
         main(["--help"])
     help_text = capsys.readouterr().out
-    # 隠しコマンドは --help の一覧に出さない
-    for hidden in ("orbit", "ping", "scene", "decode", "aurora", "nightsky", "motomura"):
+    # 隠しコマンド（mvv 含む）は --help の一覧に出さない
+    for hidden in ("orbit", "ping", "mvv", "decode", "aurora", "nightsky", "motomura"):
         assert hidden not in help_text
+    # 公開コマンドは --help の一覧に出す
+    assert "scene" in help_text
 
 
 def test_external_api_is_not_closed_by_cli() -> None:
