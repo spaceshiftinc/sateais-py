@@ -80,6 +80,7 @@ geojson = client.jobs.wait(
 | `APIError` | 上記以外のHTTPエラー |
 | `JobFailedError` | `wait()` 中にジョブが failed |
 | `JobTimeoutError` | `wait()` がタイムアウト |
+| `UnknownJobStatusError` | `wait()` 中に未知ステータスが連続 |
 | `CredentialsNotFoundError` | APIキーが解決できない |
 | `InvalidAnalysisRequestError` | 必須パラメータの組合せ不正 |
 

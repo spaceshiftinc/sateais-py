@@ -18,6 +18,7 @@ from sateais import (
     JobFailedError,
     JobStatus,
     JobTimeoutError,
+    UnknownJobStatusError,
 )
 from tests.conftest import FakeApiClient, make_job
 
@@ -137,9 +138,51 @@ def test_context_manager_does_not_close_injected_api() -> None:
 
 
 def test_credentials_file_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """環境変数も引数も無いとき、`~/.sateais/credentials` から読まれる"""
+    """環境変数も引数も無いとき、`~/.sateais/credentials` から読まれる（api 非注入時）"""
     creds = tmp_path / "credentials"
     creds.write_text('{"api_key": "sk_from_file"}')
     monkeypatch.setattr("sateais._client.load_api_key", lambda: "sk_from_file")
-    client = Client(api=FakeApiClient(next_job=make_job()))
+    client = Client()
     assert client.api_key == "sk_from_file"
+
+
+def test_injected_api_does_not_read_credentials_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """api 注入時はディスク（認証ファイル）を読まない（テスト分離・最小権限）"""
+    called = {"n": 0}
+
+    def _boom() -> str | None:
+        called["n"] += 1
+        return "sk_from_file"
+
+    monkeypatch.setattr("sateais._client.load_api_key", _boom)
+    client = Client(api=FakeApiClient(next_job=make_job()))
+    assert called["n"] == 0
+    assert client.api_key is None
+
+
+def test_jobs_wait_aborts_on_persistent_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """UNKNOWN が連続したら無限ループせず UnknownJobStatusError で抜ける"""
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    api = FakeApiClient(next_job=make_job(status=JobStatus.UNKNOWN))
+    client = Client(api_key="sk", api=api)
+    with pytest.raises(UnknownJobStatusError):
+        client.jobs.wait("j-1", poll_interval=0, timeout=None, max_unknown_polls=3)
+    # 有限回（max_unknown_polls 回）で打ち切られる
+    assert len(api.fetched) == 3
+
+
+def test_jobs_wait_unknown_streak_resets(monkeypatch: pytest.MonkeyPatch) -> None:
+    """UNKNOWN が連続せず間に既知ステータスを挟めば打ち切られない"""
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    api = FakeApiClient(
+        job_sequence=[
+            make_job(status=JobStatus.UNKNOWN),
+            make_job(status=JobStatus.PROCESSING),
+            make_job(status=JobStatus.UNKNOWN),
+            make_job(status=JobStatus.COMPLETED),
+        ],
+        result={"features": []},
+    )
+    client = Client(api_key="sk", api=api)
+    result = client.jobs.wait("j-1", poll_interval=0, max_unknown_polls=2)
+    assert result == {"features": []}

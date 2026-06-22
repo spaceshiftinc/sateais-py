@@ -122,6 +122,11 @@ def main(argv: list[str] | None = None, *, api: ApiClient | None = None) -> int:
     except (SateAIsError, ValueError) as e:
         _eprint(f"Error: {e}")
         return 1
+    except OSError as e:
+        # 出力ファイル書き込み（-o）や認証ファイル保存（login）の I/O 失敗を
+        # 生のトレースバックではなくクリーンなエラーとして扱う。
+        _eprint(f"Error: {e}")
+        return 1
     except KeyboardInterrupt:
         _eprint("Interrupted.")
         return 130
