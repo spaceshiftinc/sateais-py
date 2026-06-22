@@ -80,6 +80,42 @@ def test_non_json_success_body_raises_api_error() -> None:
     assert exc.value.status_code == 200
 
 
+def test_missing_job_id_wraps_to_api_error() -> None:
+    """200 でも job_id 欠落なら生の KeyError ではなく APIError に包む"""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"status": "completed"})
+
+    client = _make_client(handler)
+    with pytest.raises(APIError) as exc:
+        client.get_job("j-1")
+    assert exc.value.status_code == 200
+    assert "missing job_id" in exc.value.message
+
+
+def test_non_dict_job_body_wraps_to_api_error() -> None:
+    """200 でも本文が JSON 配列/スカラなら APIError に包む（job_id 取得不能）"""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[1, 2, 3])
+
+    client = _make_client(handler)
+    with pytest.raises(APIError):
+        client.get_job("j-1")
+
+
+def test_non_dict_result_body_wraps_to_api_error() -> None:
+    """result.geojson が JSON 配列/スカラなら dict 契約違反として APIError に包む"""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[1, 2, 3])
+
+    client = _make_client(handler)
+    with pytest.raises(APIError) as exc:
+        client.get_job_result("j-1")
+    assert exc.value.status_code == 200
+
+
 def test_network_failure_wraps_to_api_error_with_zero_status() -> None:
     """接続失敗等の通信エラーは status_code=0 の APIError に包む"""
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 
 from sateais._fun import (
+    _fmt_datetime,
     make_aurora_render,
     make_decode_render,
     make_nightsky_render,
@@ -54,6 +55,22 @@ def test_parse_scene_id_strips_extension() -> None:
 def test_parse_scene_id_invalid_raises(bad: str) -> None:
     with pytest.raises(ValueError, match="Sentinel-1 scene ID"):
         parse_scene_id(bad)
+
+
+def test_parse_scene_id_s1c_relative_orbit() -> None:
+    # Sentinel-1C のオフセットは 172（ESA 定義）
+    info = parse_scene_id("S1C_IW_GRDH_1SDV_20250101T000000_20250101T000025_001000_00ABCD_1A2B")
+    assert info["mission"] == "Sentinel-1C"
+    assert info["relative_orbit"] == str((1000 - 172) % 175 + 1)
+
+
+def test_fmt_datetime_valid() -> None:
+    assert _fmt_datetime("20240101T000000") == "2024-01-01 00:00:00 UTC"
+
+
+def test_fmt_datetime_invalid_returns_raw() -> None:
+    # 桁数は合っているが暦日として無効な値は、嘘の日付に整形せず素のまま返す
+    assert _fmt_datetime("20259999T999999") == "20259999T999999"
 
 
 @pytest.mark.parametrize(

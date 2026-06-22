@@ -75,10 +75,14 @@ def test_disabled_when_stream_is_not_tty() -> None:
     assert spinner.enabled is False
 
 
-def test_disabled_when_no_color_set(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_no_color_keeps_animation_but_disables_color(monkeypatch: pytest.MonkeyPatch) -> None:
+    # NO_COLOR は色の規約であり動きの抑制ではない。モノクロでアニメは継続する。
     monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setenv("COLORTERM", "truecolor")
+    monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=(80, 24): _size(80))
     spinner = SatelliteSpinner(stream=_FakeTTY())
-    assert spinner.enabled is False
+    assert spinner.enabled is True
+    assert spinner.color is False
 
 
 def test_disabled_when_terminal_too_narrow(monkeypatch: pytest.MonkeyPatch) -> None:

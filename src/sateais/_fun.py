@@ -19,6 +19,7 @@ import os
 import random
 import re
 from collections.abc import Callable
+from datetime import datetime
 
 # (frame, status) -> 複数行の描画文字列
 RenderFn = Callable[[int, str], list[str]]
@@ -294,14 +295,23 @@ _POLARISATION = {
     "VV": "VV",
 }
 # 相対軌道番号の計算に使うミッション別オフセット（ESA 定義）
-_REL_ORBIT_OFFSET = {"S1A": 73, "S1B": 27}
+_REL_ORBIT_OFFSET = {"S1A": 73, "S1B": 27, "S1C": 172}
 _REL_ORBIT_CYCLE = 175
 
 _DATETIME_RE = re.compile(r"^\d{8}T\d{6}$")
 
 
 def _fmt_datetime(token: str) -> str:
-    """`YYYYMMDDTHHMMSS` を `YYYY-MM-DD HH:MM:SS UTC` に整形する"""
+    """`YYYYMMDDTHHMMSS` を `YYYY-MM-DD HH:MM:SS UTC` に整形する
+
+    `_DATETIME_RE` は桁数しか見ないため、`20259999T999999` のような桁数は
+    合っているが暦日として無効な値も通る。意味的に無効な日時はそのまま整形すると
+    嘘の日付を表示してしまうので、暦日妥当性を検証し、不正なら token を素のまま返す。
+    """
+    try:
+        datetime.strptime(token, "%Y%m%dT%H%M%S")
+    except ValueError:
+        return token
     d, t = token.split("T")
     return f"{d[0:4]}-{d[4:6]}-{d[6:8]} {t[0:2]}:{t[2:4]}:{t[4:6]} UTC"
 
