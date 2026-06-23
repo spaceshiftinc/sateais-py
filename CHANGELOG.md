@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.1.0rc3] - 2026-06-23
+
 ### Added
 
 - 例外 `UnknownJobStatusError` を追加。`jobs.wait()` で未知ステータス（`UNKNOWN`）が

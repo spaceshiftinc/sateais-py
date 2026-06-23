@@ -1,6 +1,6 @@
 [project]
 name = "sateais"
-version = "0.1.0rc2"
+version = "0.1.0rc3"
 description = "SateAIs Python SDK and CLI for SAR satellite image analysis"
 readme = "README.md"
 requires-python = ">=3.10"
