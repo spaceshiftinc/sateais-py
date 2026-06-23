@@ -12,9 +12,14 @@ from collections.abc import Callable
 from typing import Any
 
 from ._credentials import load_api_key
-from ._errors import CredentialsNotFoundError, JobFailedError, JobTimeoutError
+from ._errors import (
+    CredentialsNotFoundError,
+    JobFailedError,
+    JobTimeoutError,
+    UnknownJobStatusError,
+)
 from ._http import DEFAULT_API_BASE_URL, ApiClient, HttpApiClient
-from ._types import AnalysisRequest, AnalysisType, Job
+from ._types import AnalysisRequest, AnalysisType, Job, JobStatus
 
 ENV_API_KEY = "SATEAIS_API_KEY"
 ENV_BASE_URL = "SATEAIS_BASE_URL"
@@ -55,17 +60,18 @@ class Client:
         timeout: float = 30.0,
         api: ApiClient | None = None,
     ):
-        resolved_key = api_key or os.environ.get(ENV_API_KEY) or load_api_key()
         self.base_url = base_url or os.environ.get(ENV_BASE_URL) or DEFAULT_API_BASE_URL
         self.api_key: str | None
         self._api: ApiClient
         if api is not None:
-            # カスタム ApiClient 注入時は認証も注入側の責務とみなし、
-            # APIキーが解決できなくても例外にしない（解決できれば属性に保持）。
-            self.api_key = resolved_key
+            # カスタム ApiClient 注入時は認証も注入側の責務とみなす。
+            # APIキーは env までの best-effort 解決に留め、ディスク（認証ファイル）には
+            # 触れない（テスト分離・最小権限のため）。解決できなくても例外にしない。
+            self.api_key = api_key or os.environ.get(ENV_API_KEY)
             self._api = api
             self._owns_api = False
         else:
+            resolved_key = api_key or os.environ.get(ENV_API_KEY) or load_api_key()
             if not resolved_key:
                 raise CredentialsNotFoundError(
                     "API key not found. Pass api_key=, set SATEAIS_API_KEY env var, "
@@ -249,6 +255,7 @@ class Jobs:
         poll_interval: float = 10.0,
         timeout: float | None = None,
         on_poll: PollCallback | None = None,
+        max_unknown_polls: int = 10,
     ) -> dict[str, Any]:
         """ジョブが完了するまで待機し、結果 GeoJSON を返す
 
@@ -257,12 +264,17 @@ class Jobs:
             poll_interval: ポーリング間隔（秒）
             timeout: タイムアウト秒数。None で無限待機
             on_poll: 毎回のポーリング後に呼ばれるコールバック
+            max_unknown_polls: ステータスが UNKNOWN のまま連続して許容するポーリング回数。
+                これを超えたら `UnknownJobStatusError` を送出する。既定 `timeout=None`
+                でも API が未知ステータスを返し続けるハングを避けるためのガード。
 
         Raises:
             JobFailedError: ジョブが failed 状態で終了した場合
             JobTimeoutError: timeout を超えても完了しなかった場合
+            UnknownJobStatusError: UNKNOWN が max_unknown_polls 回連続した場合
         """
         start = time.monotonic()
+        unknown_streak = 0
         while True:
             job = self._api.get_job(job_id)
             if on_poll is not None:
@@ -272,6 +284,16 @@ class Jobs:
                 return self._api.get_job_result(job_id)
             if job.is_failed:
                 raise JobFailedError(job)
+
+            if job.status is JobStatus.UNKNOWN:
+                unknown_streak += 1
+                if unknown_streak >= max_unknown_polls:
+                    raise UnknownJobStatusError(
+                        f"Job {job_id} stayed in an unrecognized status for "
+                        f"{unknown_streak} consecutive polls; aborting wait."
+                    )
+            else:
+                unknown_streak = 0
 
             if timeout is not None and time.monotonic() - start > timeout:
                 raise JobTimeoutError(

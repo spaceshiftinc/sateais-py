@@ -27,6 +27,7 @@ from ._errors import (
     NotFoundError,
     RateLimitError,
     SateAIsError,
+    UnknownJobStatusError,
     ValidationError,
 )
 from ._http import ApiClient
@@ -57,6 +58,7 @@ __all__ = [
     "RateLimitError",
     "JobFailedError",
     "JobTimeoutError",
+    "UnknownJobStatusError",
     "CredentialsNotFoundError",
     "InvalidAnalysisRequestError",
 ]

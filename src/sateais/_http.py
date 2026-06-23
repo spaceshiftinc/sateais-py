@@ -93,15 +93,24 @@ class HttpApiClient:
             f"/analyze/{request.analysis_type.value}",
             json_body=request.to_body(),
         )
-        return _job_from_dict(_decode_json(response))
+        return _job_from_dict(_decode_json(response), response.status_code)
 
     def get_job(self, job_id: str) -> Job:
         response = self._request("GET", f"/jobs/{job_id}")
-        return _job_from_dict(_decode_json(response))
+        return _job_from_dict(_decode_json(response), response.status_code)
 
     def get_job_result(self, job_id: str) -> dict[str, Any]:
         resp = self._request("GET", f"/jobs/{job_id}/result.geojson")
-        return _decode_json(resp)
+        body = _decode_json(resp)
+        # 戻り型は dict 契約。JSON 配列/スカラが返った場合は下流の AttributeError を
+        # 防ぐため、生のままではなく SateAIsError 階層の APIError に包む。
+        if not isinstance(body, dict):
+            raise APIError(
+                resp.status_code,
+                None,
+                f"expected JSON object in response body, got {type(body).__name__}",
+            )
+        return body
 
     def close(self) -> None:
         if self.owns_http:
@@ -132,8 +141,14 @@ def _decode_json(response: httpx.Response) -> Any:
         raise APIError(response.status_code, None, f"Invalid JSON in response body: {e}") from e
 
 
-def _job_from_dict(data: dict[str, Any]) -> Job:
-    """API レスポンス dict を Job に変換する"""
+def _job_from_dict(data: Any, status_code: int) -> Job:
+    """API レスポンス dict を Job に変換する
+
+    JSON だがオブジェクトでない／必須の job_id が欠落しているケースでも、
+    生の KeyError/AttributeError ではなく SateAIsError 階層の APIError に包む。
+    """
+    if not isinstance(data, dict) or "job_id" not in data:
+        raise APIError(status_code, None, "missing job_id in response")
     return Job(
         job_id=data["job_id"],
         status=JobStatus.parse(data.get("status")),

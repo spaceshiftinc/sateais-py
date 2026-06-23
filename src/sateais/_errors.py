@@ -71,6 +71,15 @@ class JobTimeoutError(SateAIsError):
     """ジョブがタイムアウト時間内に完了しなかった"""
 
 
+class UnknownJobStatusError(SateAIsError):
+    """ジョブのステータスが未知（UNKNOWN）のまま連続して解決しなかった
+
+    API が認識できないステータスを返し続けている状態。既定の無限待機では
+    completed/failed にならない限り永久にポーリングし続けてしまうため、
+    UNKNOWN が一定回数連続した時点でハングを避けるために送出する。
+    """
+
+
 class CredentialsNotFoundError(SateAIsError):
     """APIキーが解決できなかった"""
 

@@ -6,6 +6,24 @@
 
 ## [Unreleased]
 
+## [0.1.0rc3] - 2026-06-23
+
+### Added
+
+- 例外 `UnknownJobStatusError` を追加。`jobs.wait()` で未知ステータス（`UNKNOWN`）が
+  `max_unknown_polls` 回連続した場合に送出し、既定の無限待機でのハングを防ぐ
+- `Sentinel-1C`（S1C）の相対軌道番号オフセット（172, ESA 定義）に対応
+
+### Fixed
+
+- CLI: `-o/--output` の書き込み失敗・`login` の認証ファイル保存失敗（`OSError`）で
+  生のトレースバックを露出せず、クリーンなエラーで終了コード 1 にするよう修正
+- API 応答に `job_id` が欠落／非オブジェクトの場合に生の `KeyError` ではなく `APIError` を送出
+- `get_job_result` が JSON 配列/スカラを受けた場合に `dict` 契約を守り `APIError` を送出
+- `jobs.wait()` が未知ステータスを返し続けると無限ループしていた問題を修正（上記 `UnknownJobStatusError`）
+- 待機アニメーションが `NO_COLOR` で完全停止していたのを修正（`NO_COLOR` は色のみ無効化し、アニメは継続）
+- シーンID デコードで暦日として無効な日時を整形せず素の値で表示するよう修正
+
 ## [0.1.0rc2] - 2026-06-19
 
 ### Changed

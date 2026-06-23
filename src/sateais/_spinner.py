@@ -142,9 +142,11 @@ class SatelliteSpinner:
         self._render = render if render is not None else _make_render(self.color)
 
     def _should_animate(self) -> bool:
-        """TTY かつ十分な端末幅があり、色無効化フラグも立っていない場合のみ True"""
-        if os.environ.get("NO_COLOR"):
-            return False
+        """TTY かつ十分な端末幅がある場合のみ True
+
+        `NO_COLOR` は色の規約であって動きの抑制ではないため、アニメ可否の
+        判定には用いない（モノクロでアニメーションは継続する）。
+        """
         isatty = getattr(self._stream, "isatty", None)
         if not (callable(isatty) and isatty()):
             return False
@@ -152,8 +154,8 @@ class SatelliteSpinner:
         return width >= _MIN_TERM_W
 
     def _supports_truecolor(self) -> bool:
-        """truecolor（24bit カラー）対応端末かどうか"""
-        if not self.enabled:
+        """truecolor（24bit カラー）対応端末かどうか（NO_COLOR を尊重）"""
+        if not self.enabled or os.environ.get("NO_COLOR"):
             return False
         return os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit")
 

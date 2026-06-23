@@ -178,6 +178,27 @@ def test_jobs_result_to_file(tmp_path: Path) -> None:
     assert json.loads(out_file.read_text())["features"] == [{"x": 1}]
 
 
+def test_output_to_bad_path_returns_clean_error(capsys: pytest.CaptureFixture[str]) -> None:
+    # 書き込み不可なパスへの -o はトレースバックではなく exit 1 のクリーンなエラー
+    api = FakeApiClient(next_job=make_job(status=JobStatus.COMPLETED))
+    rc = main(["jobs", "status", "j-1", "-o", "/no/such/dir/out.json"], api=api)
+    assert rc == 1
+    assert "Error:" in capsys.readouterr().err
+
+
+def test_login_save_failure_returns_clean_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # save_api_key の OSError もトレースバックではなく exit 1 のクリーンなエラー
+    def boom(_key: str) -> Path:
+        raise OSError("disk full")
+
+    monkeypatch.setattr("sateais.cli.save_api_key", boom)
+    rc = main(["login", "--api-key", "sk_abc"])
+    assert rc == 1
+    assert "Error:" in capsys.readouterr().err
+
+
 def test_no_credentials_returns_exit_code_4(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
