@@ -6,6 +6,23 @@
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-13
+
+初回の安定版リリース。内容は `0.1.0rc1` 〜 `0.1.0rc3` の累積で、RC からの機能変更はありません。
+
+### Added
+
+- SDK: `Client` ファサードと解析メソッド5種（ship / oilslick / newbuilding / disappearbuilding / timeseries）
+- SDK: ジョブ管理 (`jobs.status` / `jobs.result` / `jobs.wait`)
+- CLI: `sateais login`, `sateais analyze <endpoint>`, `sateais jobs {status,result,wait}`
+- ファイルベース認証情報ストア（`~/.sateais/credentials`、パーミッション 0600）
+- 環境変数 `SATEAIS_API_KEY` / `SATEAIS_BASE_URL` 対応
+- AnalysisRequest のドメインルール検証
+- 例外階層: `SateAIsError` → `APIError` 系 / `JobFailedError` / `JobTimeoutError` /
+  `CredentialsNotFoundError` / `InvalidAnalysisRequestError` / `UnknownJobStatusError`
+- 軽量 Hexagonal 構成（HTTP 通信のみ `ApiClient` Port で抽象化）
+- `Sentinel-1C`（S1C）の相対軌道番号オフセット（172, ESA 定義）に対応
+
 ## [0.1.0rc3] - 2026-06-23
 
 ### Added
