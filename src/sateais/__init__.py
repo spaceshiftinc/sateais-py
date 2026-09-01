@@ -8,6 +8,12 @@ Quickstart:
     >>> job = client.analyze.ship(scene_id="S1A_IW_GRDH_...")
     >>> result = client.jobs.wait(job.job_id)
 
+投入前プレビュー（ジョブを作らず、解析される範囲と消費見込みを返す）:
+    >>> preview = client.preview.newbuilding(
+    ...     polygon="POLYGON((...))", date_start="2025-01-01", date_end="2025-06-30"
+    ... )
+    >>> preview.credits.estimated, preview.credits.sufficient
+
 内部構造:
     軽量な Hexagonal 構成。HTTP 通信のみ Port (`ApiClient` Protocol) を介して
     差し替え可能で、それ以外（時刻・スリープ・認証ファイル）は具体実装を直接使う。
@@ -31,7 +37,17 @@ from ._errors import (
     ValidationError,
 )
 from ._http import ApiClient
-from ._types import AnalysisRequest, AnalysisType, Job, JobStatus
+from ._types import (
+    AnalysisPreview,
+    AnalysisRequest,
+    AnalysisType,
+    Coverage,
+    CoverageMethod,
+    Job,
+    JobStatus,
+    PreviewCredits,
+    SceneWarning,
+)
 from ._version import __version__
 
 __all__ = [
@@ -43,6 +59,11 @@ __all__ = [
     "JobStatus",
     "AnalysisRequest",
     "AnalysisType",
+    "AnalysisPreview",
+    "PreviewCredits",
+    "Coverage",
+    "CoverageMethod",
+    "SceneWarning",
     # port (for advanced DI)
     "ApiClient",
     # credentials helpers

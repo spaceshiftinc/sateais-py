@@ -7,9 +7,11 @@ import pytest
 from sateais import (
     AnalysisRequest,
     AnalysisType,
+    CoverageMethod,
     InvalidAnalysisRequestError,
     Job,
     JobStatus,
+    PreviewCredits,
 )
 
 
@@ -88,3 +90,25 @@ class TestAnalysisRequestToBody:
         assert "scene_id" not in body
         assert body["polygon"] == "POLY"
         assert body["satellite_id"] == "sentinel-1"
+
+
+class TestCoverageMethod:
+    def test_known_values_parse(self) -> None:
+        assert CoverageMethod.parse("measured") is CoverageMethod.MEASURED
+        assert CoverageMethod.parse("estimated") is CoverageMethod.ESTIMATED
+
+    def test_unknown_and_missing_fall_back_to_unknown(self) -> None:
+        assert CoverageMethod.parse("weird") is CoverageMethod.UNKNOWN
+        assert CoverageMethod.parse(None) is CoverageMethod.UNKNOWN
+
+
+class TestPreviewCredits:
+    def test_shortfall_is_zero_when_balance_is_enough(self) -> None:
+        assert PreviewCredits(estimated=10.0, balance=30.0, sufficient=True).shortfall == 0.0
+
+    def test_shortfall_is_the_missing_amount(self) -> None:
+        assert PreviewCredits(estimated=50.0, balance=30.0, sufficient=False).shortfall == 20.0
+
+    def test_shortfall_is_none_when_estimate_is_not_available(self) -> None:
+        # estimated=None は「かからない」ではなく「投入前には確定しない」
+        assert PreviewCredits(estimated=None, balance=30.0).shortfall is None

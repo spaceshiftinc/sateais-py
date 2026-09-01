@@ -21,7 +21,16 @@ from ._errors import (
     RateLimitError,
     ValidationError,
 )
-from ._types import AnalysisRequest, Job, JobStatus
+from ._types import (
+    AnalysisPreview,
+    AnalysisRequest,
+    Coverage,
+    CoverageMethod,
+    Job,
+    JobStatus,
+    PreviewCredits,
+    SceneWarning,
+)
 from ._version import __version__
 
 DEFAULT_API_BASE_URL = "https://api.spcsft.com/api/v1"
@@ -45,6 +54,7 @@ class ApiClient(Protocol):
     """
 
     def submit_analysis(self, request: AnalysisRequest) -> Job: ...
+    def preview_analysis(self, request: AnalysisRequest) -> AnalysisPreview: ...
     def get_job(self, job_id: str) -> Job: ...
     def get_job_result(self, job_id: str) -> dict[str, Any]: ...
     def close(self) -> None: ...
@@ -94,6 +104,14 @@ class HttpApiClient:
             json_body=request.to_body(),
         )
         return _job_from_dict(_decode_json(response), response.status_code)
+
+    def preview_analysis(self, request: AnalysisRequest) -> AnalysisPreview:
+        response = self._request(
+            "POST",
+            f"/analyze/{request.analysis_type.value}/preview",
+            json_body=request.to_body(),
+        )
+        return _preview_from_dict(_decode_json(response), response.status_code)
 
     def get_job(self, job_id: str) -> Job:
         response = self._request("GET", f"/jobs/{job_id}")
@@ -158,6 +176,78 @@ def _job_from_dict(data: Any, status_code: int) -> Job:
         error_code=data.get("error_code") or data.get("error"),
         error_message=data.get("error_message"),
     )
+
+
+def _preview_from_dict(data: Any, status_code: int) -> AnalysisPreview:
+    """API レスポンス dict を AnalysisPreview に変換する
+
+    `endpoint_id` / `credits` が欠けた応答はプレビューとして解釈できないため、
+    生の KeyError/AttributeError ではなく SateAIsError 階層の APIError に包む。
+    それ以外のフィールドは欠落を許容する（入力によっては API が返さないため）。
+    """
+    if not isinstance(data, dict) or "endpoint_id" not in data:
+        raise APIError(status_code, None, "missing endpoint_id in response")
+    credits = data.get("credits")
+    if not isinstance(credits, dict):
+        raise APIError(status_code, None, "missing credits in response")
+
+    sufficient = credits.get("sufficient")
+    return AnalysisPreview(
+        endpoint_id=str(data["endpoint_id"]),
+        credits=PreviewCredits(
+            estimated=_as_float(credits.get("estimated")),
+            balance=_as_float(credits.get("balance")),
+            sufficient=sufficient if isinstance(sufficient, bool) else None,
+        ),
+        area_sqkm=_as_float(data.get("area_sqkm")),
+        coverage=_coverage_from_dict(data.get("coverage")),
+        warnings=_warnings_from_list(data.get("warnings")),
+    )
+
+
+def _coverage_from_dict(data: Any) -> Coverage | None:
+    """coverage オブジェクトを Coverage に変換する（欠落・非オブジェクトは None）
+
+    API は判定できない入力では coverage 自体を返さない。推測値で埋めず None のまま
+    返し、「情報が無い」ことを利用者に伝える。
+    """
+    if not isinstance(data, dict):
+        return None
+    polygon = data.get("polygon")
+    return Coverage(
+        method=CoverageMethod.parse(data.get("method")),
+        requested_area_sqkm=_as_float(data.get("requested_area_sqkm")),
+        ratio=_as_float(data.get("ratio")),
+        polygon=polygon if isinstance(polygon, str) else None,
+    )
+
+
+def _warnings_from_list(data: Any) -> tuple[SceneWarning, ...]:
+    """warnings 配列を SceneWarning のタプルに変換する（code を持つ要素のみ）
+
+    message が欠落・非文字列の場合は空文字にする。`str()` で包むと null が
+    "None" という文字列になって表示に出てしまうため。
+    """
+    if not isinstance(data, list):
+        return ()
+    return tuple(
+        SceneWarning(
+            code=item["code"],
+            message=item["message"] if isinstance(item.get("message"), str) else "",
+        )
+        for item in data
+        if isinstance(item, dict) and isinstance(item.get("code"), str)
+    )
+
+
+def _as_float(value: Any) -> float | None:
+    """JSON の数値を float に正規化する（None / 非数値は None）
+
+    bool は数値として扱わない（`true` が 1.0 になるのを避けるため）。
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
 
 
 def _raise_api_error(response: httpx.Response) -> NoReturn:

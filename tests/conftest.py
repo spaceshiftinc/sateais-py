@@ -10,7 +10,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from sateais import ApiClient
-from sateais._types import AnalysisRequest, Job, JobStatus
+from sateais._types import (
+    AnalysisPreview,
+    AnalysisRequest,
+    Job,
+    JobStatus,
+    PreviewCredits,
+)
 
 
 @dataclass
@@ -19,18 +25,22 @@ class FakeApiClient:
 
     Attributes:
         submitted: 投入された AnalysisRequest のリスト
+        previewed: プレビューを要求された AnalysisRequest のリスト
         fetched: get_job() で問い合わせられた job_id のリスト
         fetched_results: get_job_result() で問い合わせられた job_id のリスト
         next_job: get_job / submit_analysis が返す Job
+        next_preview: preview_analysis が返す AnalysisPreview
         job_sequence: 指定されている場合、get_job 呼び出しごとに先頭から消費
         result: get_job_result が返す GeoJSON dict
         closed: close() が呼ばれたかのフラグ
     """
 
     submitted: list[AnalysisRequest] = field(default_factory=list)
+    previewed: list[AnalysisRequest] = field(default_factory=list)
     fetched: list[str] = field(default_factory=list)
     fetched_results: list[str] = field(default_factory=list)
     next_job: Job | None = None
+    next_preview: AnalysisPreview | None = None
     job_sequence: list[Job] = field(default_factory=list)
     result: dict[str, Any] = field(default_factory=dict)
     closed: bool = False
@@ -39,6 +49,11 @@ class FakeApiClient:
         self.submitted.append(request)
         assert self.next_job is not None, "FakeApiClient.next_job not set"
         return self.next_job
+
+    def preview_analysis(self, request: AnalysisRequest) -> AnalysisPreview:
+        self.previewed.append(request)
+        assert self.next_preview is not None, "FakeApiClient.next_preview not set"
+        return self.next_preview
 
     def get_job(self, job_id: str) -> Job:
         self.fetched.append(job_id)
@@ -62,6 +77,22 @@ def make_job(
 ) -> Job:
     """テスト用の Job 生成ヘルパー"""
     return Job(job_id=job_id, status=status, **extra)
+
+
+def make_preview(
+    endpoint_id: str = "ship",
+    *,
+    estimated: float | None = 1.0,
+    balance: float | None = 100.0,
+    sufficient: bool | None = True,
+    **extra: Any,
+) -> AnalysisPreview:
+    """テスト用の AnalysisPreview 生成ヘルパー"""
+    return AnalysisPreview(
+        endpoint_id=endpoint_id,
+        credits=PreviewCredits(estimated=estimated, balance=balance, sufficient=sufficient),
+        **extra,
+    )
 
 
 # Protocol 適合の静的確認（mypy がチェック）
