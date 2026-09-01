@@ -316,6 +316,19 @@ def test_external_api_is_not_closed_by_cli() -> None:
     assert api.closed is False
 
 
+def _range_args(*extra: str) -> list[str]:
+    """期間指定エンドポイント（newbuilding 等）の必須引数一式に extra を足す"""
+    return [
+        "--polygon",
+        "POLYGON((0 0,1 0,1 1,0 0))",
+        "--date-start",
+        "2025-01-01",
+        "--date-end",
+        "2025-06-30",
+        *extra,
+    ]
+
+
 def test_preview_outputs_preview_json(capsys: pytest.CaptureFixture[str]) -> None:
     api = FakeApiClient(
         next_preview=make_preview(
@@ -329,19 +342,7 @@ def test_preview_outputs_preview_json(capsys: pytest.CaptureFixture[str]) -> Non
             warnings=(SceneWarning(code="LOW_AOI_COVERAGE", message="Scenes cover only 78%."),),
         )
     )
-    rc = main(
-        [
-            "preview",
-            "newbuilding",
-            "--polygon",
-            "POLYGON((0 0,1 0,1 1,0 0))",
-            "--date-start",
-            "2025-01-01",
-            "--date-end",
-            "2025-06-30",
-        ],
-        api=api,
-    )
+    rc = main(["preview", "newbuilding", *_range_args()], api=api)
     assert rc == 0
     out = json.loads(capsys.readouterr().out)
     assert out["endpoint_id"] == "newbuilding"
@@ -371,19 +372,7 @@ def test_preview_insufficient_credits_exits_zero(capsys: pytest.CaptureFixture[s
     api = FakeApiClient(
         next_preview=make_preview("newbuilding", estimated=500.0, balance=30.0, sufficient=False)
     )
-    rc = main(
-        [
-            "preview",
-            "newbuilding",
-            "--polygon",
-            "POLYGON((0 0,1 0,1 1,0 0))",
-            "--date-start",
-            "2025-01-01",
-            "--date-end",
-            "2025-06-30",
-        ],
-        api=api,
-    )
+    rc = main(["preview", "newbuilding", *_range_args()], api=api)
     assert rc == 0
     assert json.loads(capsys.readouterr().out)["credits"]["sufficient"] is False
 
@@ -395,64 +384,27 @@ def test_preview_api_error_maps_to_exit_code(capsys: pytest.CaptureFixture[str])
         def preview_analysis(self, request: AnalysisRequest) -> AnalysisPreview:
             raise ValidationError(400, "VALIDATION_ERROR", "Polygon area exceeds limit")
 
-    rc = main(
-        [
-            "preview",
-            "newbuilding",
-            "--polygon",
-            "POLYGON((0 0,30 0,30 30,0 0))",
-            "--date-start",
-            "2025-01-01",
-            "--date-end",
-            "2025-06-30",
-        ],
-        api=_RejectingApi(),
-    )
+    rc = main(["preview", "newbuilding", *_range_args()], api=_RejectingApi())
     assert rc == 6
     assert "VALIDATION_ERROR" in capsys.readouterr().err
 
 
-def test_preview_accepts_orbit_direction_for_date_range_endpoints() -> None:
-    """軌道方向はシーン選定を変える＝プレビュー結果を変えるので CLI からも指定できる"""
-    api = FakeApiClient(next_preview=make_preview("timeseries"))
+@pytest.mark.parametrize(
+    ("command", "recorded"),
+    [("preview", "previewed"), ("analyze", "submitted")],
+)
+def test_orbit_direction_is_accepted_for_date_range_endpoints(command: str, recorded: str) -> None:
+    """軌道方向はシーン選定を変える＝結果を変えるので CLI からも指定できる"""
+    api = FakeApiClient(
+        next_job=make_job(status=JobStatus.PENDING),
+        next_preview=make_preview("newbuilding"),
+    )
     rc = main(
-        [
-            "preview",
-            "timeseries",
-            "--polygon",
-            "POLYGON((0 0,1 0,1 1,0 0))",
-            "--date-start",
-            "2025-01-01",
-            "--date-end",
-            "2025-02-01",
-            "--orbit-direction",
-            "ascending",
-        ],
+        [command, "newbuilding", *_range_args("--orbit-direction", "ascending")],
         api=api,
     )
     assert rc == 0
-    assert api.previewed[0].orbit_direction == "ascending"
-
-
-def test_analyze_accepts_orbit_direction_for_date_range_endpoints() -> None:
-    api = FakeApiClient(next_job=make_job(status=JobStatus.PENDING))
-    rc = main(
-        [
-            "analyze",
-            "newbuilding",
-            "--polygon",
-            "POLYGON((0 0,1 0,1 1,0 0))",
-            "--date-start",
-            "2025-01-01",
-            "--date-end",
-            "2025-02-01",
-            "--orbit-direction",
-            "descending",
-        ],
-        api=api,
-    )
-    assert rc == 0
-    assert api.submitted[0].orbit_direction == "descending"
+    assert getattr(api, recorded)[0].orbit_direction == "ascending"
 
 
 def test_preview_accepts_json_params(tmp_path: Path) -> None:

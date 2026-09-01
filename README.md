@@ -152,6 +152,7 @@ sateais preview newbuilding \
 ```json
 {
   "endpoint_id": "newbuilding",
+  "credits": { "estimated": 1.0, "balance": 480.0, "sufficient": true },
   "area_sqkm": 78.4,
   "coverage": {
     "method": "estimated",
@@ -159,7 +160,6 @@ sateais preview newbuilding \
     "ratio": 0.78,
     "polygon": "POLYGON ((139.000000 35.000000, ...))"
   },
-  "credits": { "estimated": 1.0, "balance": 480.0, "sufficient": true },
   "warnings": [{ "code": "LOW_AOI_COVERAGE", "message": "Scenes cover only 78% of the requested area." }]
 }
 ```
