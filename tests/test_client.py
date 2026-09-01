@@ -20,7 +20,7 @@ from sateais import (
     JobTimeoutError,
     UnknownJobStatusError,
 )
-from tests.conftest import FakeApiClient, make_job
+from tests.conftest import FakeApiClient, make_job, make_preview
 
 
 @pytest.fixture(autouse=True)
@@ -186,3 +186,38 @@ def test_jobs_wait_unknown_streak_resets(monkeypatch: pytest.MonkeyPatch) -> Non
     client = Client(api_key="sk", api=api)
     result = client.jobs.wait("j-1", poll_interval=0, max_unknown_polls=2)
     assert result == {"features": []}
+
+
+def test_preview_dispatches_to_preview_endpoint() -> None:
+    api = FakeApiClient(next_preview=make_preview("newbuilding", estimated=215.99))
+    client = Client(api_key="sk", api=api)
+    preview = client.preview.newbuilding(
+        polygon="POLY", date_start="2025-01-01", date_end="2025-06-30"
+    )
+
+    assert preview.endpoint_id == "newbuilding"
+    assert preview.credits.estimated == 215.99
+    assert api.previewed[0].analysis_type is AnalysisType.NEWBUILDING
+    assert api.previewed[0].polygon == "POLY"
+    # プレビューはジョブを作らない
+    assert api.submitted == []
+
+
+def test_preview_validates_before_requesting() -> None:
+    """検証は投入と同一。プレビューが通れば投入も通る、を SDK 側でも保つ"""
+    api = FakeApiClient(next_preview=make_preview())
+    client = Client(api_key="sk", api=api)
+    with pytest.raises(InvalidAnalysisRequestError):
+        client.preview.ship(scene_id="S1A_X", polygon="POLY", date="2025-01-01")
+    assert api.previewed == []
+
+
+def test_preview_insufficient_credits_does_not_raise() -> None:
+    api = FakeApiClient(
+        next_preview=make_preview("ship", estimated=500.0, balance=30.0, sufficient=False)
+    )
+    client = Client(api_key="sk", api=api)
+    preview = client.preview.ship(scene_id="S1A_X")
+
+    assert preview.credits.sufficient is False
+    assert preview.credits.shortfall == 470.0

@@ -26,12 +26,12 @@
 ```
 src/sateais/
 ├── __init__.py        # public API
-├── _types.py          # エンティティ + AnalysisRequest.validate()
+├── _types.py          # エンティティ（Job / AnalysisPreview 等） + AnalysisRequest.validate()
 ├── _errors.py         # 例外
 ├── _http.py           # ApiClient Protocol + HttpApiClient（唯一の Port）
 ├── _credentials.py    # load_api_key / save_api_key 関数
 ├── _spinner.py        # 待機中の衛星「信号パルス」アスキーアニメーション（CLI 専用）
-├── _client.py         # Client + Analyze + Jobs
+├── _client.py         # Client + Analyze + Preview + Jobs
 └── cli.py             # argparse CLI
 ```
 
@@ -67,6 +67,7 @@ src/sateais/
 ```python
 from sateais import (
     Client, Job, JobStatus, AnalysisRequest, AnalysisType, ApiClient,
+    AnalysisPreview, PreviewCredits, Coverage, CoverageMethod, SceneWarning,
     load_api_key, save_api_key,
     SateAIsError, APIError, AuthenticationError, ValidationError,
     InsufficientCreditsError, NotFoundError, RateLimitError,
@@ -83,13 +84,15 @@ from sateais import (
 
 1. `_types.py` の `AnalysisType` enum に値を追加
 2. 必要なら `AnalysisRequest.validate()` のルール分岐を更新
-3. `_client.py` の `Analyze` クラスにメソッド追加
-4. CLI は `ANALYZE_ENDPOINTS` の Enum 列挙で自動対応（変更不要）
+3. `_client.py` の `_AnalysisEndpoints` にメソッド追加
+   （`Analyze` = 投入 / `Preview` = 投入前プレビュー の両方に同時に生える）
+4. CLI は `ANALYZE_ENDPOINTS` の Enum 列挙で `analyze` / `preview` とも自動対応（変更不要）
 5. テスト追加 (`tests/test_types.py` + `tests/test_client.py`)
 
 ### HTTP レスポンス形式が変わった
 
-`_http.py` の `_job_from_dict` / `_raise_api_error` のみ更新。他のファイルには触らない。
+`_http.py` の `_job_from_dict` / `_preview_from_dict` / `_raise_api_error` のみ更新。
+他のファイルには触らない。
 
 ### 新しいエラーコードを追加する
 
@@ -110,11 +113,11 @@ from sateais import (
 
 ```
 tests/
-├── conftest.py            # FakeApiClient + make_job
+├── conftest.py            # FakeApiClient + make_job / make_preview
 ├── test_types.py          # Entity + validate
 ├── test_http.py           # HttpApiClient（httpx.MockTransport）
 ├── test_credentials.py    # load/save (tmp_path)
-├── test_client.py         # Client / Analyze / Jobs（FakeApiClient + monkeypatch time）
+├── test_client.py         # Client / Analyze / Preview / Jobs（FakeApiClient + monkeypatch time）
 └── test_cli.py            # CLI（FakeApiClient 注入）
 ```
 
