@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- PEP 561 のマーカー `py.typed` を同梱。型ヒントは全て揃っているのにマーカーが無く、
+  利用者側の mypy / pyright からは型が一切見えず（`module is installed, but missing
+  library stubs or py.typed marker`）すべて `Any` に落ちていた
+
 ## [0.1.0] - 2026-07-13
 
 初回の安定版リリース。内容は `0.1.0rc1` 〜 `0.1.0rc3` の累積で、RC からの機能変更はありません。
