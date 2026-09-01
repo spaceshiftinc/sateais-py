@@ -1,6 +1,6 @@
 # sateais
 
-**日本語** | [English](https://github.com/spaceshiftinc/sateais-py/blob/v0.1.0/README.en.md)
+**日本語** | [English](https://github.com/spaceshiftinc/sateais-py/blob/v0.2.0/README.en.md)
 
 SateAIs の公式 Python SDK および CLI です。SAR 衛星画像の解析 API
 （船舶検出 / オイルスリック検出 / 新規・消失建物検出 / 時系列変化検出）に
@@ -219,7 +219,7 @@ _http.py                   ← ApiClient Protocol + HttpApiClient
 _types.py , _errors.py     ← エンティティ / 例外
 ```
 
-詳細は [docs/ARCHITECTURE.md](https://github.com/spaceshiftinc/sateais-py/blob/v0.1.0/docs/ARCHITECTURE.md)、開発者向けは [docs/CONTRIBUTING.md](https://github.com/spaceshiftinc/sateais-py/blob/v0.1.0/docs/CONTRIBUTING.md)。
+詳細は [docs/ARCHITECTURE.md](https://github.com/spaceshiftinc/sateais-py/blob/v0.2.0/docs/ARCHITECTURE.md)、開発者向けは [docs/CONTRIBUTING.md](https://github.com/spaceshiftinc/sateais-py/blob/v0.2.0/docs/CONTRIBUTING.md)。
 
 ## サポート
 
@@ -227,4 +227,4 @@ _types.py , _errors.py     ← エンティティ / 例外
 
 ## ライセンス
 
-MIT — [LICENSE](https://github.com/spaceshiftinc/sateais-py/blob/v0.1.0/LICENSE) 参照。
+MIT — [LICENSE](https://github.com/spaceshiftinc/sateais-py/blob/v0.2.0/LICENSE) 参照。

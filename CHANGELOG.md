@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-01
+
+投入前プレビューへの対応が主な内容。API の `POST /api/v1/analyze/{endpoint}/preview`
+（api-orchestrator PR #288〜#295）に追随する。
+
 ### Added
 
 - SDK: 投入前プレビュー `client.preview.*`（ship / oilslick / newbuilding / disappearbuilding /
@@ -22,9 +27,8 @@
 ### Changed
 
 - **破壊的変更**: `ApiClient` Protocol に `preview_analysis()` を追加。独自実装を
-  `Client(api=...)` に注入している場合は同メソッドの追加が必要（0.x のため次リリースは
-  0.2.0 を想定。`CLAUDE.md` の「Protocol へのメソッド追加はメジャー以外禁止」との整合は
-  リリース前に要判断）
+  `Client(api=...)` に注入している場合は同メソッドの追加が必要。0.x のため minor を
+  メジャー相当として扱う（方針は `CLAUDE.md` の「後方互換性」に明記した）
 - `Analyze` の解析メソッドを、`Preview` と共有する内部基底クラス `_AnalysisEndpoints` に集約
   （public なシグネチャ・戻り値は変更なし）
 

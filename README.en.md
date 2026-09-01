@@ -1,6 +1,6 @@
 # sateais
 
-[日本語](https://github.com/spaceshiftinc/sateais-py/blob/v0.1.0/README.md) | **English**
+[日本語](https://github.com/spaceshiftinc/sateais-py/blob/v0.2.0/README.md) | **English**
 
 The official Python SDK and CLI for SateAIs. It provides unified programmatic and
 command-line access to the SAR satellite image analysis APIs (ship detection,
@@ -222,7 +222,7 @@ _http.py                   ← ApiClient Protocol + HttpApiClient
 _types.py , _errors.py     ← entities / exceptions
 ```
 
-For details, see [docs/ARCHITECTURE.md](https://github.com/spaceshiftinc/sateais-py/blob/v0.1.0/docs/ARCHITECTURE.md), and [docs/CONTRIBUTING.md](https://github.com/spaceshiftinc/sateais-py/blob/v0.1.0/docs/CONTRIBUTING.md) for contributors.
+For details, see [docs/ARCHITECTURE.md](https://github.com/spaceshiftinc/sateais-py/blob/v0.2.0/docs/ARCHITECTURE.md), and [docs/CONTRIBUTING.md](https://github.com/spaceshiftinc/sateais-py/blob/v0.2.0/docs/CONTRIBUTING.md) for contributors.
 
 ## Support
 
@@ -230,4 +230,4 @@ For technical inquiries, please contact [console-support@spcsft.com](mailto:cons
 
 ## License
 
-MIT — see [LICENSE](https://github.com/spaceshiftinc/sateais-py/blob/v0.1.0/LICENSE).
+MIT — see [LICENSE](https://github.com/spaceshiftinc/sateais-py/blob/v0.2.0/LICENSE).
