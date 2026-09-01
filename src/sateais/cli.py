@@ -6,6 +6,7 @@ argparse を使った delivery 層。`ApiClient` の差し替えだけテスト�
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import getpass
 import json
 import os
@@ -14,7 +15,7 @@ import sys
 import time
 from typing import Any
 
-from ._client import ENV_API_KEY, ENV_BASE_URL, Jobs, PollCallback
+from ._client import ENV_API_KEY, ENV_BASE_URL, Analyze, Jobs, PollCallback, Preview
 from ._credentials import load_api_key, save_api_key
 from ._errors import (
     APIError,
@@ -160,33 +161,28 @@ def _add_endpoint_params(sp: argparse.ArgumentParser, dt: AnalysisType) -> None:
 
     `analyze` と `preview` はリクエストボディが完全に同じなので、引数定義も共有する。
     """
+    sp.add_argument("--polygon", help="WKT polygon (EPSG:4326)")
+
     if dt.accepts_scene_or_polygon_date:
         # ship / oilslick: scene_id か polygon+date のどちらか
         sp.add_argument("--scene-id", help="Scene ID to analyze")
-        sp.add_argument("--polygon", help="WKT polygon (EPSG:4326)")
         sp.add_argument("--date", help="Reference date YYYY-MM-DD (required if --polygon is used)")
         sp.add_argument(
             "--date-direction",
             choices=["before", "after", "nearest"],
             help="Direction for date range filtering",
         )
-        sp.add_argument(
-            "--orbit-direction",
-            choices=["ascending", "descending"],
-            help="Orbit direction for the scene",
-        )
     elif dt.requires_date_range:
         # newbuilding / disappearbuilding / timeseries: polygon + date_start + date_end が必須
         # 必須チェックは AnalysisRequest.validate() に集約する
-        sp.add_argument("--polygon", help="WKT polygon (EPSG:4326)")
         sp.add_argument("--date-start", help="Start date YYYY-MM-DD")
         sp.add_argument("--date-end", help="End date YYYY-MM-DD")
-        sp.add_argument(
-            "--orbit-direction",
-            choices=["ascending", "descending"],
-            help="Orbit direction used for scene selection",
-        )
 
+    sp.add_argument(
+        "--orbit-direction",
+        choices=["ascending", "descending"],
+        help="Orbit direction used for scene selection",
+    )
     sp.add_argument(
         "--json",
         dest="json_params",
@@ -458,8 +454,7 @@ def _load_json_params(raw: str | None) -> dict[str, Any]:
 def _cmd_analyze(args: argparse.Namespace, api: ApiClient | None = None) -> int:
     with _open_api(api) as api_client:
         request = _build_analysis_request(args)
-        request.validate()
-        job = api_client.submit_analysis(request)
+        job = Analyze(api_client)._dispatch(request)
 
         if args.wait:
             result = _wait_for_job(
@@ -483,8 +478,7 @@ def _cmd_preview(args: argparse.Namespace, api: ApiClient | None = None) -> int:
     """
     with _open_api(api) as api_client:
         request = _build_analysis_request(args)
-        request.validate()
-        preview = api_client.preview_analysis(request)
+        preview = Preview(api_client)._dispatch(request)
         _output_json(_preview_to_dict(preview), args.output)
     return 0
 
@@ -568,27 +562,10 @@ def _preview_to_dict(preview: AnalysisPreview) -> dict[str, Any]:
 
     `credits.estimated` は null（＝投入前には確定しない）と 0 が別の意味を持ち、
     `coverage` も null（＝判定できない）が意味を持つため、`_job_to_dict` と違って
-    None のキーを落とさず API のレスポンスと同じ形で出す。
+    None のキーを落とさない。エンティティの定義をそのまま出せばよいので
+    `dataclasses.asdict` に任せ、フィールド一覧をここに二重管理しない。
     """
-    coverage: dict[str, Any] | None = None
-    if preview.coverage is not None:
-        coverage = {
-            "method": preview.coverage.method.value,
-            "requested_area_sqkm": preview.coverage.requested_area_sqkm,
-            "ratio": preview.coverage.ratio,
-            "polygon": preview.coverage.polygon,
-        }
-    return {
-        "endpoint_id": preview.endpoint_id,
-        "area_sqkm": preview.area_sqkm,
-        "coverage": coverage,
-        "credits": {
-            "estimated": preview.credits.estimated,
-            "balance": preview.credits.balance,
-            "sufficient": preview.credits.sufficient,
-        },
-        "warnings": [{"code": w.code, "message": w.message} for w in preview.warnings],
-    }
+    return dataclasses.asdict(preview)
 
 
 def _output_json(data: dict[str, Any], output_path: str | None) -> None:

@@ -191,13 +191,12 @@ def _preview_from_dict(data: Any, status_code: int) -> AnalysisPreview:
     if not isinstance(credits, dict):
         raise APIError(status_code, None, "missing credits in response")
 
-    sufficient = credits.get("sufficient")
     return AnalysisPreview(
         endpoint_id=str(data["endpoint_id"]),
         credits=PreviewCredits(
             estimated=_as_float(credits.get("estimated")),
             balance=_as_float(credits.get("balance")),
-            sufficient=sufficient if isinstance(sufficient, bool) else None,
+            sufficient=_as_bool(credits.get("sufficient")),
         ),
         area_sqkm=_as_float(data.get("area_sqkm")),
         coverage=_coverage_from_dict(data.get("coverage")),
@@ -213,12 +212,11 @@ def _coverage_from_dict(data: Any) -> Coverage | None:
     """
     if not isinstance(data, dict):
         return None
-    polygon = data.get("polygon")
     return Coverage(
         method=CoverageMethod.parse(data.get("method")),
         requested_area_sqkm=_as_float(data.get("requested_area_sqkm")),
         ratio=_as_float(data.get("ratio")),
-        polygon=polygon if isinstance(polygon, str) else None,
+        polygon=_as_str(data.get("polygon")),
     )
 
 
@@ -231,10 +229,7 @@ def _warnings_from_list(data: Any) -> tuple[SceneWarning, ...]:
     if not isinstance(data, list):
         return ()
     return tuple(
-        SceneWarning(
-            code=item["code"],
-            message=item["message"] if isinstance(item.get("message"), str) else "",
-        )
+        SceneWarning(code=item["code"], message=_as_str(item.get("message")) or "")
         for item in data
         if isinstance(item, dict) and isinstance(item.get("code"), str)
     )
@@ -248,6 +243,16 @@ def _as_float(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return float(value)
+
+
+def _as_str(value: Any) -> str | None:
+    """JSON の文字列だけを通す（None / 非文字列は None）"""
+    return value if isinstance(value, str) else None
+
+
+def _as_bool(value: Any) -> bool | None:
+    """JSON の真偽値だけを通す（None / 非真偽値は None）"""
+    return value if isinstance(value, bool) else None
 
 
 def _raise_api_error(response: httpx.Response) -> NoReturn:

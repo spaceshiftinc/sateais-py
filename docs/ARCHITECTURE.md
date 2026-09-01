@@ -119,13 +119,15 @@ class Preview(_AnalysisEndpoints[AnalysisPreview]):
 投入も通る」を保証しているため、SDK でも同じ検証を通す。保証の外にあるのは投入時点の
 状況で決まるもの（残高不足 402・同時実行数の上限 429）だけ。
 
-CLI 側も同じ理由で `analyze` / `preview` の引数定義を `_add_endpoint_params()` で共有する。
+CLI 側も同じ理由で `analyze` / `preview` の引数定義を `_add_endpoint_params()` で共有し、
+送信も両方が `_dispatch()` を経由する。
 
 ## 検証ロジックの置き場所
 
-`AnalysisRequest.validate()` メソッドに集約。
-`_AnalysisEndpoints._dispatch()`（`Analyze` / `Preview`）と
-`cli._cmd_analyze` / `cli._cmd_preview` が送信直前に呼ぶ。
+`AnalysisRequest.validate()` メソッドに集約し、呼ぶのは
+`_AnalysisEndpoints._dispatch()`（`Analyze` / `Preview`）の 1 箇所だけ。
+CLI も自前で検証せず、`Analyze(api)._dispatch()` / `Preview(api)._dispatch()` を経由する
+（`cli._cmd_jobs_status` が `Jobs` ファサードを通すのと同じ扱い）。
 
 ```python
 @dataclass(frozen=True)

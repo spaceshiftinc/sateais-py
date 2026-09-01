@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from sateais import (
+    AnalysisPreview,
     AnalysisRequest,
     AnalysisType,
     APIError,
@@ -29,6 +30,15 @@ def _make_client(handler: Callable[[httpx.Request], httpx.Response]) -> HttpApiC
         base_url="https://api.test/api/v1", transport=transport, follow_redirects=True
     )
     return HttpApiClient("sk_test", base_url="https://api.test/api/v1", http_client=http)
+
+
+#: レスポンスボディだけを見るテスト用の既定リクエスト（内容は解釈されない）
+_ANY_REQUEST = AnalysisRequest(AnalysisType.SHIP, scene_id="S1A_X")
+
+
+def _preview_from(body: object, request: AnalysisRequest = _ANY_REQUEST) -> AnalysisPreview:
+    """固定ボディを返す MockTransport から AnalysisPreview を 1 回取得する"""
+    return _make_client(lambda _request: httpx.Response(200, json=body)).preview_analysis(request)
 
 
 def test_submit_analysis_posts_correct_path_and_body() -> None:
@@ -208,25 +218,12 @@ def test_preview_analysis_posts_to_preview_path_with_same_body() -> None:
 
 def test_preview_insufficient_credits_is_not_an_error() -> None:
     """残高不足は 402 ではなく 200 + sufficient=False で返る"""
-
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200,
-            json={
-                "endpoint_id": "newbuilding",
-                "area_sqkm": 5000.0,
-                "credits": {"estimated": 500.0, "balance": 30.0, "sufficient": False},
-            },
-        )
-
-    client = _make_client(handler)
-    preview = client.preview_analysis(
-        AnalysisRequest(
-            AnalysisType.NEWBUILDING,
-            polygon="POLY",
-            date_start="2025-01-01",
-            date_end="2025-06-30",
-        )
+    preview = _preview_from(
+        {
+            "endpoint_id": "newbuilding",
+            "area_sqkm": 5000.0,
+            "credits": {"estimated": 500.0, "balance": 30.0, "sufficient": False},
+        }
     )
 
     assert preview.credits.sufficient is False
@@ -237,27 +234,19 @@ def test_preview_insufficient_credits_is_not_an_error() -> None:
 
 def test_preview_returns_coverage_for_ship_with_polygon_and_date() -> None:
     """ship / oilslick も polygon 指定なら coverage が返る（ASF フットプリント経路）"""
-
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200,
-            json={
-                "endpoint_id": "ship",
-                "area_sqkm": 63.0,
-                "coverage": {
-                    "method": "estimated",
-                    "requested_area_sqkm": 100.0,
-                    "ratio": 0.63,
-                    "polygon": "POLYGON ((139 35, ...))",
-                },
-                "credits": {"estimated": 1.0, "balance": 480.0, "sufficient": True},
-                "warnings": [],
+    preview = _preview_from(
+        {
+            "endpoint_id": "ship",
+            "area_sqkm": 63.0,
+            "coverage": {
+                "method": "estimated",
+                "requested_area_sqkm": 100.0,
+                "ratio": 0.63,
+                "polygon": "POLYGON ((139 35, ...))",
             },
-        )
-
-    client = _make_client(handler)
-    preview = client.preview_analysis(
-        AnalysisRequest(AnalysisType.SHIP, polygon="POLY", date="2025-03-01")
+            "credits": {"estimated": 1.0, "balance": 480.0, "sufficient": True},
+            "warnings": [],
+        }
     )
 
     assert preview.coverage is not None
@@ -267,27 +256,17 @@ def test_preview_returns_coverage_for_ship_with_polygon_and_date() -> None:
 
 def test_preview_coverage_with_null_fields_stays_none() -> None:
     """coverage はあるが ratio / requested_area_sqkm が null という形もある"""
-
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200,
-            json={
-                "endpoint_id": "timeseries",
-                "coverage": {
-                    "method": "estimated",
-                    "requested_area_sqkm": None,
-                    "ratio": None,
-                    "polygon": None,
-                },
-                "credits": {"estimated": 1.0, "balance": 2.0, "sufficient": True},
+    preview = _preview_from(
+        {
+            "endpoint_id": "timeseries",
+            "coverage": {
+                "method": "estimated",
+                "requested_area_sqkm": None,
+                "ratio": None,
+                "polygon": None,
             },
-        )
-
-    client = _make_client(handler)
-    preview = client.preview_analysis(
-        AnalysisRequest(
-            AnalysisType.TIMESERIES, polygon="POLY", date_start="2025-01-01", date_end="2025-02-01"
-        )
+            "credits": {"estimated": 1.0, "balance": 2.0, "sufficient": True},
+        }
     )
 
     assert preview.coverage is not None
@@ -298,23 +277,17 @@ def test_preview_coverage_with_null_fields_stays_none() -> None:
 
 def test_preview_warning_without_message_is_not_the_string_none() -> None:
     """message が欠落・null でも "None" という文字列にしない"""
-
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200,
-            json={
-                "endpoint_id": "ship",
-                "credits": {"estimated": None, "balance": 1.0, "sufficient": None},
-                "warnings": [
-                    {"code": "CREDITS_NOT_ESTIMABLE", "message": None},
-                    {"code": "LOW_AOI_COVERAGE"},
-                    {"message": "code の無い要素は落とす"},
-                ],
-            },
-        )
-
-    client = _make_client(handler)
-    preview = client.preview_analysis(AnalysisRequest(AnalysisType.SHIP, scene_id="S1A_X"))
+    preview = _preview_from(
+        {
+            "endpoint_id": "ship",
+            "credits": {"estimated": None, "balance": 1.0, "sufficient": None},
+            "warnings": [
+                {"code": "CREDITS_NOT_ESTIMABLE", "message": None},
+                {"code": "LOW_AOI_COVERAGE"},
+                {"message": "code の無い要素は落とす"},
+            ],
+        }
+    )
 
     assert [(w.code, w.message) for w in preview.warnings] == [
         ("CREDITS_NOT_ESTIMABLE", ""),
@@ -324,20 +297,14 @@ def test_preview_warning_without_message_is_not_the_string_none() -> None:
 
 def test_preview_omitted_estimate_stays_none() -> None:
     """estimated=null は 0 に潰さず None のまま返す（確定しないことを伝えるため）"""
-
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200,
-            json={
-                "endpoint_id": "ship",
-                "area_sqkm": None,
-                "credits": {"estimated": None, "balance": 480.0, "sufficient": None},
-                "warnings": [{"code": "CREDITS_NOT_ESTIMABLE", "message": "Not estimable."}],
-            },
-        )
-
-    client = _make_client(handler)
-    preview = client.preview_analysis(AnalysisRequest(AnalysisType.SHIP, scene_id="S1A_X"))
+    preview = _preview_from(
+        {
+            "endpoint_id": "ship",
+            "area_sqkm": None,
+            "credits": {"estimated": None, "balance": 480.0, "sufficient": None},
+            "warnings": [{"code": "CREDITS_NOT_ESTIMABLE", "message": "Not estimable."}],
+        }
+    )
 
     assert preview.credits.estimated is None
     assert preview.credits.sufficient is None
@@ -347,22 +314,14 @@ def test_preview_omitted_estimate_stays_none() -> None:
 
 
 def test_preview_unknown_coverage_method_falls_back() -> None:
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200,
-            json={
-                "endpoint_id": "timeseries",
-                "coverage": {"method": "guessed", "ratio": 0.5},
-                "credits": {"estimated": 1.0, "balance": 2.0, "sufficient": True},
-            },
-        )
-
-    client = _make_client(handler)
-    preview = client.preview_analysis(
-        AnalysisRequest(
-            AnalysisType.TIMESERIES, polygon="POLY", date_start="2025-01-01", date_end="2025-02-01"
-        )
+    preview = _preview_from(
+        {
+            "endpoint_id": "timeseries",
+            "coverage": {"method": "guessed", "ratio": 0.5},
+            "credits": {"estimated": 1.0, "balance": 2.0, "sufficient": True},
+        }
     )
+
     assert preview.coverage is not None
     assert preview.coverage.method is CoverageMethod.UNKNOWN
     assert preview.coverage.polygon is None
@@ -378,9 +337,5 @@ def test_preview_unknown_coverage_method_falls_back() -> None:
     ],
 )
 def test_malformed_preview_body_wraps_to_api_error(body: object) -> None:
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=body)
-
-    client = _make_client(handler)
     with pytest.raises(APIError):
-        client.preview_analysis(AnalysisRequest(AnalysisType.SHIP, scene_id="S1A_X"))
+        _preview_from(body)
