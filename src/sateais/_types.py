@@ -1,6 +1,7 @@
 """エンティティ・値オブジェクト
 
-Job / JobStatus / AnalysisType / AnalysisRequest を提供する。
+Job / JobStatus / AnalysisType / AnalysisRequest と、投入前プレビューの
+エンティティ（AnalysisPreview / PreviewCredits / Coverage / SceneWarning）を提供する。
 ドメインルールの検証 (`AnalysisRequest.validate`) もここに置く。
 """
 
@@ -157,3 +158,114 @@ class AnalysisRequest:
             "orbit_direction": self.orbit_direction,
         }
         return {k: v for k, v in fields.items() if v is not None}
+
+
+class CoverageMethod(str, Enum):
+    """被覆率をどうやって出したか
+
+    API が将来未知の値を返した場合は UNKNOWN にフォールバックする。
+    """
+
+    #: NoData を除外した実データ境界から測定した
+    MEASURED = "measured"
+    #: シーンのフットプリントと要求範囲の交差から推定した
+    ESTIMATED = "estimated"
+    UNKNOWN = "unknown"
+
+    @classmethod
+    def parse(cls, raw: str | None) -> CoverageMethod:
+        if raw is None:
+            return cls.UNKNOWN
+        try:
+            return cls(raw)
+        except ValueError:
+            return cls.UNKNOWN
+
+
+@dataclass(frozen=True)
+class Coverage:
+    """指定範囲のうち、実際に解析される範囲
+
+    指定した polygon と実際に解析される範囲は一致しない（シーンが範囲全体を
+    覆っていない、NoData が含まれる等）。判定できない入力では API が coverage
+    自体を返さないため `None` になる。「情報が無い」と「100% 解析される」は
+    別のことなので、`ratio` を 1.0 で埋めることはしない。
+
+    Attributes:
+        method: 被覆率の算出方法。投入前プレビューは必ず ESTIMATED
+        requested_area_sqkm: 指定した範囲の面積（km²）
+        ratio: 解析される割合（0.0〜1.0）
+        polygon: 実際に解析される範囲の WKT。リクエストの `polygon` と同じ形式
+            なので、覆えなかった範囲を指定し直す用途にそのまま使える。
+            範囲を WKT にできない場合（交差が空・簡略化しても大きすぎる）は None
+    """
+
+    method: CoverageMethod
+    requested_area_sqkm: float | None = None
+    ratio: float | None = None
+    polygon: str | None = None
+
+
+@dataclass(frozen=True)
+class SceneWarning:
+    """シーン選定の警告（ジョブ自体は失敗しない）
+
+    Attributes:
+        code: 警告コード（LOW_AOI_COVERAGE, CREDITS_NOT_ESTIMABLE など）
+        message: 人間向けの説明
+    """
+
+    code: str
+    message: str
+
+
+@dataclass(frozen=True)
+class PreviewCredits:
+    """投入前プレビューが返すクレジット情報
+
+    `estimated` が None のときは「かからない」ではなく「投入前には確定しない」。
+    0 として表示してはならない（理由は `AnalysisPreview.warnings` の
+    `CREDITS_NOT_ESTIMABLE` で返る）。
+
+    見積もりは要求範囲の面積から出すが、実際の課金は NoData を除いた実処理面積で
+    決まるため、実消費が見積もりを上回ることはない。
+
+    Attributes:
+        estimated: 消費見込み。確定しない入力では None
+        balance: 現在の残高
+        sufficient: 足りるか。`estimated` が None なら判定できないので None
+    """
+
+    estimated: float | None = None
+    balance: float | None = None
+    sufficient: bool | None = None
+
+    @property
+    def shortfall(self) -> float | None:
+        """残高の不足額。足りている場合は 0.0、判定できない場合は None"""
+        if self.estimated is None or self.balance is None:
+            return None
+        return max(0.0, self.estimated - self.balance)
+
+
+@dataclass(frozen=True)
+class AnalysisPreview:
+    """投入前プレビューの結果（取得時点のスナップショット、不変）
+
+    ジョブは作られず、クレジットも消費されない。残高不足はエラーではなく
+    `credits.sufficient=False` として返る（いくら足りないかを知ることが
+    プレビューの目的の一つのため）。
+
+    Attributes:
+        endpoint_id: 解析種別（`AnalysisType` の値と同じ文字列）
+        credits: 消費見込みと残高
+        area_sqkm: 解析される見込みの面積（km²）
+        coverage: 指定範囲のうち解析される見込みの割合。推定できない入力では None
+        warnings: 投入前に分かる警告（実行しない判断に使える）
+    """
+
+    endpoint_id: str
+    credits: PreviewCredits
+    area_sqkm: float | None = None
+    coverage: Coverage | None = None
+    warnings: tuple[SceneWarning, ...] = ()

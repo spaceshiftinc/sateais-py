@@ -6,6 +6,38 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-01
+
+投入前プレビューへの対応が主な内容。API の `POST /api/v1/analyze/{endpoint}/preview`
+（api-orchestrator PR #288〜#295）に追随する。
+
+### Added
+
+- SDK: 投入前プレビュー `client.preview.*`（ship / oilslick / newbuilding / disappearbuilding /
+  timeseries）。`client.analyze.*` と同じ引数で、ジョブを作らず・クレジットを消費せずに
+  解析される見込みの範囲（`coverage`）と消費見込み（`credits`）を返す。残高不足は例外ではなく
+  `credits.sufficient=False` で返る
+- SDK: プレビューのエンティティ `AnalysisPreview` / `PreviewCredits` / `Coverage` /
+  `CoverageMethod` / `SceneWarning` を public API に追加
+- CLI: `sateais preview <endpoint>`（`analyze` と同じパラメータ・`--json` / `-o` に対応）
+- CLI: 期間指定エンドポイント（newbuilding / disappearbuilding / timeseries）に
+  `--orbit-direction` を追加。SDK は元から受け付けていたが CLI からは `--json` 経由でしか
+  指定できず、軌道方向でシーン選定が変わるためプレビューと実際の投入が食い違いえた
+
+### Changed
+
+- **破壊的変更**: `ApiClient` Protocol に `preview_analysis()` を追加。独自実装を
+  `Client(api=...)` に注入している場合は同メソッドの追加が必要。0.x のため minor を
+  メジャー相当として扱う（方針は `CLAUDE.md` の「後方互換性」に明記した）
+- `Analyze` の解析メソッドを、`Preview` と共有する内部基底クラス `_AnalysisEndpoints` に集約
+  （public なシグネチャ・戻り値は変更なし）
+
+### Fixed
+
+- PEP 561 のマーカー `py.typed` を同梱。型ヒントは全て揃っているのにマーカーが無く、
+  利用者側の mypy / pyright からは型が一切見えず（`module is installed, but missing
+  library stubs or py.typed marker`）すべて `Any` に落ちていた
+
 ## [0.1.0] - 2026-07-13
 
 初回の安定版リリース。内容は `0.1.0rc1` 〜 `0.1.0rc3` の累積で、RC からの機能変更はありません。

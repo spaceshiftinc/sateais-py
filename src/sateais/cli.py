@@ -6,6 +6,7 @@ argparse を使った delivery 層。`ApiClient` の差し替えだけテスト�
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import getpass
 import json
 import os
@@ -14,7 +15,7 @@ import sys
 import time
 from typing import Any
 
-from ._client import ENV_API_KEY, ENV_BASE_URL, Jobs, PollCallback
+from ._client import ENV_API_KEY, ENV_BASE_URL, Analyze, Jobs, PollCallback, Preview
 from ._credentials import load_api_key, save_api_key
 from ._errors import (
     APIError,
@@ -40,7 +41,7 @@ from ._fun import (
 )
 from ._http import DEFAULT_API_BASE_URL, ApiClient, HttpApiClient
 from ._spinner import RenderFn, SatelliteSpinner
-from ._types import AnalysisRequest, AnalysisType, Job
+from ._types import AnalysisPreview, AnalysisRequest, AnalysisType, Job
 from ._version import __version__
 
 ANALYZE_ENDPOINTS: tuple[AnalysisType, ...] = (
@@ -142,6 +143,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     _add_login(sub)
     _add_analyze(sub)
+    _add_preview(sub)
     _add_jobs(sub)
     _add_scene(sub)
     _add_hidden(sub)
@@ -154,50 +156,56 @@ def _add_login(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(func=_cmd_login)
 
 
+def _add_endpoint_params(sp: argparse.ArgumentParser, dt: AnalysisType) -> None:
+    """解析種別ごとの入力パラメータ引数を登録する
+
+    `analyze` と `preview` はリクエストボディが完全に同じなので、引数定義も共有する。
+    """
+    sp.add_argument("--polygon", help="WKT polygon (EPSG:4326)")
+
+    if dt.accepts_scene_or_polygon_date:
+        # ship / oilslick: scene_id か polygon+date のどちらか
+        sp.add_argument("--scene-id", help="Scene ID to analyze")
+        sp.add_argument("--date", help="Reference date YYYY-MM-DD (required if --polygon is used)")
+        sp.add_argument(
+            "--date-direction",
+            choices=["before", "after", "nearest"],
+            help="Direction for date range filtering",
+        )
+    elif dt.requires_date_range:
+        # newbuilding / disappearbuilding / timeseries: polygon + date_start + date_end が必須
+        # 必須チェックは AnalysisRequest.validate() に集約する
+        sp.add_argument("--date-start", help="Start date YYYY-MM-DD")
+        sp.add_argument("--date-end", help="End date YYYY-MM-DD")
+
+    sp.add_argument(
+        "--orbit-direction",
+        choices=["ascending", "descending"],
+        help="Orbit direction used for scene selection",
+    )
+    sp.add_argument(
+        "--json",
+        dest="json_params",
+        metavar="JSON",
+        help=(
+            "Analysis parameters as a JSON object string, '@FILE' to read a file, "
+            "or '-' for stdin. Individual flags override JSON values."
+        ),
+    )
+    sp.add_argument(
+        "--satellite-id",
+        default=None,
+        help="Satellite ID. Currently 'sentinel-1' is the only supported value (default).",
+    )
+    sp.add_argument("-o", "--output", help="Write output to file instead of stdout")
+
+
 def _add_analyze(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("analyze", help="Submit a new analysis job")
     analyze_sub = p.add_subparsers(dest="analyze_type", required=True, metavar="<analysis_type>")
     for dt in ANALYZE_ENDPOINTS:
         sp = analyze_sub.add_parser(dt.value, help=f"Submit a {dt.value} analysis")
-
-        if dt.accepts_scene_or_polygon_date:
-            # ship / oilslick: scene_id か polygon+date のどちらか
-            sp.add_argument("--scene-id", help="Scene ID to analyze")
-            sp.add_argument("--polygon", help="WKT polygon (EPSG:4326)")
-            sp.add_argument(
-                "--date", help="Reference date YYYY-MM-DD (required if --polygon is used)"
-            )
-            sp.add_argument(
-                "--date-direction",
-                choices=["before", "after", "nearest"],
-                help="Direction for date range filtering",
-            )
-            sp.add_argument(
-                "--orbit-direction",
-                choices=["ascending", "descending"],
-                help="Orbit direction for the scene",
-            )
-        elif dt.requires_date_range:
-            # newbuilding / disappearbuilding / timeseries: polygon + date_start + date_end が必須
-            # 必須チェックは AnalysisRequest.validate() に集約する
-            sp.add_argument("--polygon", help="WKT polygon (EPSG:4326)")
-            sp.add_argument("--date-start", help="Start date YYYY-MM-DD")
-            sp.add_argument("--date-end", help="End date YYYY-MM-DD")
-
-        sp.add_argument(
-            "--json",
-            dest="json_params",
-            metavar="JSON",
-            help=(
-                "Analysis parameters as a JSON object string, '@FILE' to read a file, "
-                "or '-' for stdin. Individual flags override JSON values."
-            ),
-        )
-        sp.add_argument(
-            "--satellite-id",
-            default=None,
-            help="Satellite ID. Currently 'sentinel-1' is the only supported value (default).",
-        )
+        _add_endpoint_params(sp, dt)
         sp.add_argument(
             "--wait",
             action="store_true",
@@ -215,10 +223,21 @@ def _add_analyze(sub: argparse._SubParsersAction) -> None:
             default=None,
             help="Wait timeout in seconds (default: no timeout)",
         )
-        sp.add_argument("-o", "--output", help="Write output to file instead of stdout")
         # 隠しフラグ: 待機スピナーをアヒルに差し替える
         sp.add_argument("--ducky", action="store_true", help=argparse.SUPPRESS)
         sp.set_defaults(func=_cmd_analyze, analysis_type=dt)
+
+
+def _add_preview(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "preview",
+        help="Preview analyzed area and credit estimate without submitting a job",
+    )
+    preview_sub = p.add_subparsers(dest="analyze_type", required=True, metavar="<analysis_type>")
+    for dt in ANALYZE_ENDPOINTS:
+        sp = preview_sub.add_parser(dt.value, help=f"Preview a {dt.value} analysis")
+        _add_endpoint_params(sp, dt)
+        sp.set_defaults(func=_cmd_preview, analysis_type=dt)
 
 
 def _add_jobs(sub: argparse._SubParsersAction) -> None:
@@ -435,8 +454,7 @@ def _load_json_params(raw: str | None) -> dict[str, Any]:
 def _cmd_analyze(args: argparse.Namespace, api: ApiClient | None = None) -> int:
     with _open_api(api) as api_client:
         request = _build_analysis_request(args)
-        request.validate()
-        job = api_client.submit_analysis(request)
+        job = Analyze(api_client)._dispatch(request)
 
         if args.wait:
             result = _wait_for_job(
@@ -449,6 +467,19 @@ def _cmd_analyze(args: argparse.Namespace, api: ApiClient | None = None) -> int:
             _output_json(result, args.output)
         else:
             _output_json(_job_to_dict(job), args.output)
+    return 0
+
+
+def _cmd_preview(args: argparse.Namespace, api: ApiClient | None = None) -> int:
+    """投入前プレビューを取得して JSON で出力する
+
+    ジョブは作らずクレジットも消費しない。残高不足は API がエラーにせず
+    `credits.sufficient=false` で返すため、CLI も終了コード 0 で出力する。
+    """
+    with _open_api(api) as api_client:
+        request = _build_analysis_request(args)
+        preview = Preview(api_client)._dispatch(request)
+        _output_json(_preview_to_dict(preview), args.output)
     return 0
 
 
@@ -524,6 +555,17 @@ def _job_to_dict(job: Job) -> dict[str, Any]:
         "error_message": job.error_message,
     }
     return {k: v for k, v in fields.items() if v is not None}
+
+
+def _preview_to_dict(preview: AnalysisPreview) -> dict[str, Any]:
+    """AnalysisPreview を JSON シリアライズ可能な dict に変換する
+
+    `credits.estimated` は null（＝投入前には確定しない）と 0 が別の意味を持ち、
+    `coverage` も null（＝判定できない）が意味を持つため、`_job_to_dict` と違って
+    None のキーを落とさない。エンティティの定義をそのまま出せばよいので
+    `dataclasses.asdict` に任せ、フィールド一覧をここに二重管理しない。
+    """
+    return dataclasses.asdict(preview)
 
 
 def _output_json(data: dict[str, Any], output_path: str | None) -> None:

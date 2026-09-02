@@ -11,9 +11,17 @@ from pathlib import Path
 
 import pytest
 
-from sateais import JobStatus
+from sateais import (
+    AnalysisPreview,
+    AnalysisRequest,
+    Coverage,
+    CoverageMethod,
+    JobStatus,
+    SceneWarning,
+    ValidationError,
+)
 from sateais.cli import main
-from tests.conftest import FakeApiClient, make_job
+from tests.conftest import FakeApiClient, make_job, make_preview
 
 
 @pytest.fixture(autouse=True)
@@ -306,3 +314,110 @@ def test_external_api_is_not_closed_by_cli() -> None:
     api = FakeApiClient(next_job=make_job(status=JobStatus.PENDING))
     main(["analyze", "ship", "--scene-id", "S1A_X"], api=api)
     assert api.closed is False
+
+
+def _range_args(*extra: str) -> list[str]:
+    """期間指定エンドポイント（newbuilding 等）の必須引数一式に extra を足す"""
+    return [
+        "--polygon",
+        "POLYGON((0 0,1 0,1 1,0 0))",
+        "--date-start",
+        "2025-01-01",
+        "--date-end",
+        "2025-06-30",
+        *extra,
+    ]
+
+
+def test_preview_outputs_preview_json(capsys: pytest.CaptureFixture[str]) -> None:
+    api = FakeApiClient(
+        next_preview=make_preview(
+            "newbuilding",
+            estimated=215.99,
+            balance=480.0,
+            area_sqkm=78.4,
+            coverage=Coverage(
+                method=CoverageMethod.ESTIMATED, requested_area_sqkm=100.2, ratio=0.78
+            ),
+            warnings=(SceneWarning(code="LOW_AOI_COVERAGE", message="Scenes cover only 78%."),),
+        )
+    )
+    rc = main(["preview", "newbuilding", *_range_args()], api=api)
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["endpoint_id"] == "newbuilding"
+    assert out["area_sqkm"] == 78.4
+    assert out["coverage"]["method"] == "estimated"
+    assert out["credits"] == {"estimated": 215.99, "balance": 480.0, "sufficient": True}
+    assert out["warnings"][0]["code"] == "LOW_AOI_COVERAGE"
+    # ジョブは投入されない
+    assert api.submitted == []
+    assert api.previewed[0].date_start == "2025-01-01"
+
+
+def test_preview_keeps_null_estimate_and_coverage(capsys: pytest.CaptureFixture[str]) -> None:
+    """null は「かからない」「100%」ではないため、キーを落とさず null のまま出す"""
+    api = FakeApiClient(next_preview=make_preview("ship", estimated=None, sufficient=None))
+    rc = main(["preview", "ship", "--scene-id", "S1A_X"], api=api)
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["credits"]["estimated"] is None
+    assert out["credits"]["sufficient"] is None
+    assert out["coverage"] is None
+    assert out["warnings"] == []
+
+
+def test_preview_insufficient_credits_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
+    """API が 200 を返す仕様に合わせ、残高不足でも終了コードは 0"""
+    api = FakeApiClient(
+        next_preview=make_preview("newbuilding", estimated=500.0, balance=30.0, sufficient=False)
+    )
+    rc = main(["preview", "newbuilding", *_range_args()], api=api)
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["credits"]["sufficient"] is False
+
+
+def test_preview_api_error_maps_to_exit_code(capsys: pytest.CaptureFixture[str]) -> None:
+    """投入と同じ検証で弾かれた場合、CLI の終了コードも analyze と同じ（4xx → 6）"""
+
+    class _RejectingApi(FakeApiClient):
+        def preview_analysis(self, request: AnalysisRequest) -> AnalysisPreview:
+            raise ValidationError(400, "VALIDATION_ERROR", "Polygon area exceeds limit")
+
+    rc = main(["preview", "newbuilding", *_range_args()], api=_RejectingApi())
+    assert rc == 6
+    assert "VALIDATION_ERROR" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("command", "recorded"),
+    [("preview", "previewed"), ("analyze", "submitted")],
+)
+def test_orbit_direction_is_accepted_for_date_range_endpoints(command: str, recorded: str) -> None:
+    """軌道方向はシーン選定を変える＝結果を変えるので CLI からも指定できる"""
+    api = FakeApiClient(
+        next_job=make_job(status=JobStatus.PENDING),
+        next_preview=make_preview("newbuilding"),
+    )
+    rc = main(
+        [command, "newbuilding", *_range_args("--orbit-direction", "ascending")],
+        api=api,
+    )
+    assert rc == 0
+    assert getattr(api, recorded)[0].orbit_direction == "ascending"
+
+
+def test_preview_accepts_json_params(tmp_path: Path) -> None:
+    api = FakeApiClient(next_preview=make_preview())
+    params = tmp_path / "params.json"
+    params.write_text('{"scene_id": "S1A_FILE"}')
+    rc = main(["preview", "ship", "--json", f"@{params}"], api=api)
+    assert rc == 0
+    assert api.previewed[0].scene_id == "S1A_FILE"
+
+
+def test_preview_invalid_params_exit_one(capsys: pytest.CaptureFixture[str]) -> None:
+    api = FakeApiClient(next_preview=make_preview())
+    rc = main(["preview", "newbuilding", "--polygon", "POLY"], api=api)
+    assert rc == 1
+    assert api.previewed == []
