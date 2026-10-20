@@ -3,9 +3,9 @@
 **日本語** | [English](https://github.com/spaceshiftinc/sateais-py/blob/v0.2.0/README.en.md)
 
 SateAIs の公式 Python SDK および CLI です。SAR 衛星画像の解析 API
-（船舶検出 / オイルスリック検出 / 新規・消失建物検出 / 時系列変化検出）に
+（船舶検出 / オイルスリック検出 / 新規・消失建物検出 / 時系列変化検出）と、
+Sentinel-2 を併用した土地利用・土地被覆分類（LULC）に、
 プログラムおよびコマンドラインから統一的にアクセスできます。
-現在の対応衛星は Sentinel-1 で、今後順次拡張を予定しています。
 
 ```bash
 pip install sateais
@@ -55,6 +55,7 @@ export SATEAIS_API_KEY=sk_live_xxxxx
 | `client.analyze.newbuilding(...)` | `polygon`+`date_start`+`date_end` |
 | `client.analyze.disappearbuilding(...)` | 同上 |
 | `client.analyze.timeseries(...)` | 同上 |
+| `client.analyze.lulc(...)` | `polygon`+`month`（結果は zip アーカイブ） |
 
 詳細パラメータは [API リファレンス](https://docs.spcsft.com/) 参照。
 
@@ -97,6 +98,28 @@ if preview.credits.sufficient:
 - `coverage` は `polygon` を指定した入力で返ります（`scene_id` 指定や、シーン検索ができなかった場合は返りません）。`None` は「判定できない」という意味で、「100% 解析される」（`ratio=1.0`）とは区別されます
 - `scene_id` 指定のように課金対象が指定範囲で決まらない入力では `credits.estimated` が `None` になり、`warnings` に `CREDITS_NOT_ESTIMABLE` が入ります
 
+### 土地利用・土地被覆（LULC）
+
+Sentinel-2 と Sentinel-1 の 1 年分の画像から、10 m 画素ごとに 15 クラスへ分類します。
+結果は GeoJSON ではなく zip アーカイブ（`classes.tif` / `class_stats.json` /
+`legend.json` / `visual.png`）なので、`jobs.wait_archive()` / `jobs.result_archive()` で
+バイト列として受け取ります。
+
+```python
+from pathlib import Path
+
+polygon = "POLYGON((136.27 36.23, 136.37 36.23, 136.37 36.33, 136.27 36.33, 136.27 36.23))"
+preview = client.preview.lulc(polygon=polygon, month="2026-08")   # 外接矩形の面積で見積もり
+job = client.analyze.lulc(polygon=polygon, month="2026-08")       # 2025-09〜2026-08 を解析
+Path("lulc.zip").write_bytes(client.jobs.wait_archive(job.job_id))
+```
+
+- `month` は解析期間 12 ヶ月の最終月（`YYYY-MM`）。**偶数月のみ**・2018-02 以降・経過済みの月
+- polygon の**外接矩形全体**が解析・課金されます（外接矩形の面積は 0.5〜350 km²）。矩形に近い形で指定してください
+- `satellite_id` は `"sentinel-2"` 固定です（既定値。内部では Sentinel-1 も使いますが、権限は Sentinel-2 で判定されます）
+- `scene_id` / `date*` / `orbit_direction` は指定できません
+- 結果が zip のジョブに `jobs.wait()` を使うと、`SateAIsError` で `wait_archive()` を案内します
+
 ### ジョブ管理
 
 ```python
@@ -108,6 +131,9 @@ geojson = client.jobs.wait(
     timeout=600,                            # 秒、None で無限
     on_poll=lambda j: print(j.status),      # 進捗コールバック
 )
+data = client.jobs.result_archive(job_id)   # 結果が zip のジョブ（lulc）は bytes で取得
+data = client.jobs.wait_archive(job_id)     # 同上を完了まで待って取得（引数は wait と同じ）
+job.result_is_archive                       # 結果が zip か（completed のときだけ判定できる）
 ```
 
 ### 例外
@@ -133,7 +159,7 @@ sateais login [--api-key sk_...]                  # APIキーを保存（省略�
 sateais analyze <endpoint> [options] [--wait] [-o FILE]
 sateais preview <endpoint> [options] [-o FILE]     # 投入せず解析範囲と消費見込みを表示
 sateais jobs status <job_id>
-sateais jobs result <job_id> [-o FILE]
+sateais jobs result <job_id> [-o FILE]           # zip のジョブ（lulc）は -o 必須
 sateais jobs wait   <job_id> [-o FILE] [--poll-interval N] [--timeout N]
 sateais scene <scene_id>                          # Sentinel-1 シーンIDを構成要素にデコード
 ```
@@ -167,6 +193,16 @@ sateais preview newbuilding \
 `credits.estimated` の `null` は「かからない」ではなく「投入前には確定しない」、
 `coverage` の `null` は「判定できない」を表します。0 や 100% として扱わないでください。
 
+### 土地利用・土地被覆（LULC）
+
+結果は zip アーカイブなので、`--wait` / `jobs result` / `jobs wait` では `-o FILE` が必須です。
+`analyze lulc --wait` で `-o` を忘れた場合は、クレジットを消費する投入の前にエラーになります。
+
+```bash
+sateais preview lulc --polygon "POLYGON((...))" --month 2026-08
+sateais analyze lulc --polygon "POLYGON((...))" --month 2026-08 --wait -o lulc.zip
+```
+
 ### パラメータを JSON でまとめて渡す
 
 `analyze` / `preview` の解析パラメータは個別フラグの代わりに `--json` でまとめて指定できます。
@@ -187,7 +223,7 @@ sateais analyze ship --json @base.json --scene-id S1A_OTHER
 ```
 
 JSON に指定できるキー: `satellite_id` / `scene_id` / `polygon` / `date` /
-`date_start` / `date_end` / `date_direction` / `orbit_direction`。
+`date_start` / `date_end` / `date_direction` / `orbit_direction` / `month`。
 未知のキーはエラーになります。
 
 ### 終了コード

@@ -179,7 +179,12 @@ def test_jobs_status(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_jobs_result_to_file(tmp_path: Path) -> None:
-    api = FakeApiClient(result={"type": "FeatureCollection", "features": [{"x": 1}]})
+    api = FakeApiClient(
+        next_job=make_job(
+            status=JobStatus.COMPLETED, result_path="/api/v1/jobs/j-1/result.geojson"
+        ),
+        result={"type": "FeatureCollection", "features": [{"x": 1}]},
+    )
     out_file = tmp_path / "out.geojson"
     rc = main(["jobs", "result", "j-1", "-o", str(out_file)], api=api)
     assert rc == 0
@@ -421,3 +426,83 @@ def test_preview_invalid_params_exit_one(capsys: pytest.CaptureFixture[str]) -> 
     rc = main(["preview", "newbuilding", "--polygon", "POLY"], api=api)
     assert rc == 1
     assert api.previewed == []
+
+
+_LULC_ARGS = ["--polygon", "POLY", "--month", "2026-08"]
+_LULC_DONE = make_job(status=JobStatus.COMPLETED, result_path="/api/v1/jobs/j-1/result.zip")
+
+
+@pytest.mark.parametrize(
+    ("command", "recorded"),
+    [("preview", "previewed"), ("analyze", "submitted")],
+)
+def test_lulc_defaults_to_sentinel_2(command: str, recorded: str) -> None:
+    api = FakeApiClient(next_job=make_job(), next_preview=make_preview("lulc"))
+    rc = main([command, "lulc", *_LULC_ARGS], api=api)
+    assert rc == 0
+    req = getattr(api, recorded)[0]
+    assert req.to_body() == {"satellite_id": "sentinel-2", "polygon": "POLY", "month": "2026-08"}
+
+
+def test_lulc_month_from_json(tmp_path: Path) -> None:
+    api = FakeApiClient(next_preview=make_preview("lulc"))
+    rc = main(["preview", "lulc", "--json", '{"polygon": "POLY", "month": "2026-06"}'], api=api)
+    assert rc == 0
+    assert api.previewed[0].month == "2026-06"
+
+
+def test_lulc_has_no_orbit_direction_flag(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["analyze", "lulc", *_LULC_ARGS, "--orbit-direction", "ascending"])
+    assert "unrecognized arguments" in capsys.readouterr().err
+
+
+def test_analyze_lulc_wait_writes_zip(tmp_path: Path) -> None:
+    api = FakeApiClient(
+        next_job=make_job(status=JobStatus.PENDING),
+        job_sequence=[_LULC_DONE],
+        archive=b"PKzip",
+    )
+    out_file = tmp_path / "lulc.zip"
+    rc = main(
+        ["analyze", "lulc", *_LULC_ARGS, "--wait", "--poll-interval", "0", "-o", str(out_file)],
+        api=api,
+    )
+    assert rc == 0
+    assert out_file.read_bytes() == b"PKzip"
+
+
+def test_analyze_lulc_wait_without_output_fails_before_submitting(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # 投入後に失敗するとクレジットだけ消費されるので、投入前に止める
+    api = FakeApiClient(next_job=make_job())
+    rc = main(["analyze", "lulc", *_LULC_ARGS, "--wait"], api=api)
+    assert rc == 1
+    assert "-o FILE" in capsys.readouterr().err
+    assert api.submitted == []
+
+
+def test_jobs_result_for_archive_job_writes_zip(tmp_path: Path) -> None:
+    api = FakeApiClient(next_job=_LULC_DONE, archive=b"PKzip")
+    out_file = tmp_path / "lulc.zip"
+    rc = main(["jobs", "result", "j-1", "-o", str(out_file)], api=api)
+    assert rc == 0
+    assert out_file.read_bytes() == b"PKzip"
+    assert api.fetched_results == []
+
+
+def test_jobs_result_for_archive_job_requires_output(capsys: pytest.CaptureFixture[str]) -> None:
+    api = FakeApiClient(next_job=_LULC_DONE)
+    rc = main(["jobs", "result", "j-1"], api=api)
+    assert rc == 1
+    assert "-o FILE" in capsys.readouterr().err
+    assert api.fetched_archives == []
+
+
+def test_jobs_wait_for_archive_job_writes_zip(tmp_path: Path) -> None:
+    api = FakeApiClient(job_sequence=[_LULC_DONE], archive=b"PKzip")
+    out_file = tmp_path / "lulc.zip"
+    rc = main(["jobs", "wait", "j-1", "--poll-interval", "0", "-o", str(out_file)], api=api)
+    assert rc == 0
+    assert out_file.read_bytes() == b"PKzip"

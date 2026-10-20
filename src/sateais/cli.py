@@ -50,6 +50,7 @@ ANALYZE_ENDPOINTS: tuple[AnalysisType, ...] = (
     AnalysisType.NEWBUILDING,
     AnalysisType.DISAPPEARBUILDING,
     AnalysisType.TIMESERIES,
+    AnalysisType.LULC,
 )
 
 # スペースシフトの MVV（Mission / Vision / Value）。`sateais mvv` で表示する。
@@ -90,6 +91,7 @@ _PARAM_KEYS: tuple[str, ...] = (
     "date_end",
     "date_direction",
     "orbit_direction",
+    "month",
 )
 
 
@@ -177,12 +179,19 @@ def _add_endpoint_params(sp: argparse.ArgumentParser, dt: AnalysisType) -> None:
         # 必須チェックは AnalysisRequest.validate() に集約する
         sp.add_argument("--date-start", help="Start date YYYY-MM-DD")
         sp.add_argument("--date-end", help="End date YYYY-MM-DD")
+    elif dt.requires_month:
+        # lulc: polygon + month のみ。シーンは API が選ぶので軌道方向も受け付けない
+        sp.add_argument(
+            "--month",
+            help="Last month of the 12-month analysis period, YYYY-MM (even months only)",
+        )
 
-    sp.add_argument(
-        "--orbit-direction",
-        choices=["ascending", "descending"],
-        help="Orbit direction used for scene selection",
-    )
+    if not dt.requires_month:
+        sp.add_argument(
+            "--orbit-direction",
+            choices=["ascending", "descending"],
+            help="Orbit direction used for scene selection",
+        )
     sp.add_argument(
         "--json",
         dest="json_params",
@@ -195,7 +204,7 @@ def _add_endpoint_params(sp: argparse.ArgumentParser, dt: AnalysisType) -> None:
     sp.add_argument(
         "--satellite-id",
         default=None,
-        help="Satellite ID. Currently 'sentinel-1' is the only supported value (default).",
+        help=f"Satellite ID (default: {dt.default_satellite_id})",
     )
     sp.add_argument("-o", "--output", help="Write output to file instead of stdout")
 
@@ -209,7 +218,11 @@ def _add_analyze(sub: argparse._SubParsersAction) -> None:
         sp.add_argument(
             "--wait",
             action="store_true",
-            help="Block until job completes, then output result GeoJSON",
+            help=(
+                "Block until job completes, then write the result zip archive to -o FILE"
+                if dt is AnalysisType.LULC
+                else "Block until job completes, then output result GeoJSON"
+            ),
         )
         sp.add_argument(
             "--poll-interval",
@@ -249,7 +262,9 @@ def _add_jobs(sub: argparse._SubParsersAction) -> None:
     sp.add_argument("-o", "--output", help="Write output to file instead of stdout")
     sp.set_defaults(func=_cmd_jobs_status)
 
-    sp = jobs_sub.add_parser("result", help="Download result GeoJSON")
+    sp = jobs_sub.add_parser(
+        "result", help="Download result (GeoJSON, or a zip archive written to -o FILE)"
+    )
     sp.add_argument("job_id")
     sp.add_argument("-o", "--output", help="Write output to file instead of stdout")
     sp.set_defaults(func=_cmd_jobs_result)
@@ -401,7 +416,7 @@ def _build_analysis_request(args: argparse.Namespace) -> AnalysisRequest:
 
     return AnalysisRequest(
         analysis_type=args.analysis_type,
-        satellite_id=params.get("satellite_id") or "sentinel-1",
+        satellite_id=params.get("satellite_id") or args.analysis_type.default_satellite_id,
         scene_id=params.get("scene_id"),
         polygon=params.get("polygon"),
         date=params.get("date"),
@@ -409,6 +424,7 @@ def _build_analysis_request(args: argparse.Namespace) -> AnalysisRequest:
         date_end=params.get("date_end"),
         date_direction=params.get("date_direction"),
         orbit_direction=params.get("orbit_direction"),
+        month=params.get("month"),
     )
 
 
@@ -452,19 +468,25 @@ def _load_json_params(raw: str | None) -> dict[str, Any]:
 
 
 def _cmd_analyze(args: argparse.Namespace, api: ApiClient | None = None) -> int:
+    # zip を返す種別は出力先が無いと待ち終えてから失敗するので、クレジットを
+    # 消費する投入より前に弾く
+    if args.wait and args.analysis_type is AnalysisType.LULC and not args.output:
+        raise ValueError(f"{args.analysis_type.value} --wait requires -o FILE (zip archive)")
+
     with _open_api(api) as api_client:
         request = _build_analysis_request(args)
         job = Analyze(api_client)._dispatch(request)
 
         if args.wait:
-            result = _wait_for_job(
-                Jobs(api_client),
+            jobs = Jobs(api_client)
+            done = _wait_for_job(
+                jobs,
                 job.job_id,
                 poll_interval=args.poll_interval,
                 timeout=args.timeout,
                 ducky=args.ducky,
             )
-            _output_json(result, args.output)
+            _output_result(jobs, done, args.output)
         else:
             _output_json(_job_to_dict(job), args.output)
     return 0
@@ -492,22 +514,41 @@ def _cmd_jobs_status(args: argparse.Namespace, api: ApiClient | None = None) -> 
 
 def _cmd_jobs_result(args: argparse.Namespace, api: ApiClient | None = None) -> int:
     with _open_api(api) as api_client:
-        result = Jobs(api_client).result(args.job_id)
-        _output_json(result, args.output)
+        jobs = Jobs(api_client)
+        # 結果の形式（GeoJSON / zip）は result_path でしか分からないので先に状態を取る
+        _output_result(jobs, jobs.status(args.job_id), args.output)
     return 0
 
 
 def _cmd_jobs_wait(args: argparse.Namespace, api: ApiClient | None = None) -> int:
     with _open_api(api) as api_client:
-        result = _wait_for_job(
-            Jobs(api_client),
+        jobs = Jobs(api_client)
+        done = _wait_for_job(
+            jobs,
             args.job_id,
             poll_interval=args.poll_interval,
             timeout=args.timeout,
             ducky=args.ducky,
         )
-        _output_json(result, args.output)
+        _output_result(jobs, done, args.output)
     return 0
+
+
+def _output_result(jobs: Jobs, job: Job, output_path: str | None) -> None:
+    """ジョブの結果を形式に合わせて出力する
+
+    GeoJSON は従来どおり stdout か -o のファイルへ、zip アーカイブはバイナリを端末に
+    流さないよう -o のファイルにだけ書き出す。
+    """
+    if not job.result_is_archive:
+        _output_json(jobs.result(job.job_id), output_path)
+        return
+    if not output_path:
+        raise ValueError(f"Job {job.job_id} produces a zip archive; specify -o FILE")
+    data = jobs.result_archive(job.job_id)
+    with open(output_path, "wb") as f:
+        f.write(data)
+    _eprint(f"Wrote {output_path}")
 
 
 class _ApiClientContext:
@@ -586,8 +627,10 @@ def _wait_for_job(
     poll_interval: float,
     timeout: float | None,
     ducky: bool = False,
-) -> dict[str, Any]:
-    """ジョブ完了を待ち、結果 GeoJSON を返す
+) -> Job:
+    """ジョブ完了を待ち、completed になった時点の Job を返す
+
+    結果の取得は `_output_result` が形式（GeoJSON / zip）に合わせて行う。
 
     対話端末（stderr が TTY）では衛星スキャンのアスキーアニメーションを表示し、
     パイプ/リダイレクト/テスト時は変化時のみ 1 行の進捗ログにフォールバックする。
@@ -596,7 +639,7 @@ def _wait_for_job(
     render: RenderFn | None = _render_motomura if ducky else None
     with SatelliteSpinner(render=render) as spinner:
         on_poll = _spinner_callback(spinner) if spinner.enabled else _process_callback()
-        return jobs.wait(
+        return jobs._wait_completed(
             job_id,
             poll_interval=poll_interval,
             timeout=timeout,

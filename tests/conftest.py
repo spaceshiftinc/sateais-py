@@ -28,10 +28,12 @@ class FakeApiClient:
         previewed: プレビューを要求された AnalysisRequest のリスト
         fetched: get_job() で問い合わせられた job_id のリスト
         fetched_results: get_job_result() で問い合わせられた job_id のリスト
+        fetched_archives: get_job_result_archive() で問い合わせられた job_id のリスト
         next_job: get_job / submit_analysis が返す Job
         next_preview: preview_analysis が返す AnalysisPreview
         job_sequence: 指定されている場合、get_job 呼び出しごとに先頭から消費
         result: get_job_result が返す GeoJSON dict
+        archive: get_job_result_archive が返す zip バイト列
         closed: close() が呼ばれたかのフラグ
     """
 
@@ -39,10 +41,12 @@ class FakeApiClient:
     previewed: list[AnalysisRequest] = field(default_factory=list)
     fetched: list[str] = field(default_factory=list)
     fetched_results: list[str] = field(default_factory=list)
+    fetched_archives: list[str] = field(default_factory=list)
     next_job: Job | None = None
     next_preview: AnalysisPreview | None = None
     job_sequence: list[Job] = field(default_factory=list)
     result: dict[str, Any] = field(default_factory=dict)
+    archive: bytes = b"PK\x03\x04fake"
     closed: bool = False
 
     def submit_analysis(self, request: AnalysisRequest) -> Job:
@@ -65,6 +69,10 @@ class FakeApiClient:
     def get_job_result(self, job_id: str) -> dict[str, Any]:
         self.fetched_results.append(job_id)
         return self.result
+
+    def get_job_result_archive(self, job_id: str) -> bytes:
+        self.fetched_archives.append(job_id)
+        return self.archive
 
     def close(self) -> None:
         self.closed = True

@@ -88,6 +88,8 @@ from sateais import (
    （`Analyze` = 投入 / `Preview` = 投入前プレビュー の両方に同時に生える）
 4. CLI は `ANALYZE_ENDPOINTS` の Enum 列挙で `analyze` / `preview` とも自動対応（変更不要）
 5. テスト追加 (`tests/test_types.py` + `tests/test_client.py`)
+6. 結果が GeoJSON でない（zip 等）場合は `Jobs.result_archive` / `wait_archive` で受け取れるか確認する
+   （形式は `Job.result_path` の拡張子で判定。docs/ARCHITECTURE.md「結果の形式」参照）
 
 ### HTTP レスポンス形式が変わった
 

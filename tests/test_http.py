@@ -339,3 +339,47 @@ def test_preview_unknown_coverage_method_falls_back() -> None:
 def test_malformed_preview_body_wraps_to_api_error(body: object) -> None:
     with pytest.raises(APIError):
         _preview_from(body)
+
+
+def test_get_job_result_archive_fetches_zip_bytes() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        return httpx.Response(200, content=b"PK\x03\x04data")
+
+    client = _make_client(handler)
+    assert client.get_job_result_archive("j-1") == b"PK\x03\x04data"
+    assert captured["path"] == "/api/v1/jobs/j-1/result.zip"
+
+
+def test_get_job_result_archive_rejects_non_zip_body() -> None:
+    client = _make_client(lambda _request: httpx.Response(200, text="<html>expired</html>"))
+    with pytest.raises(APIError, match="zip"):
+        client.get_job_result_archive("j-1")
+
+
+def test_get_job_result_archive_maps_not_completed_to_api_error() -> None:
+    body = {"error": {"code": "JOB_NOT_COMPLETED", "message": "Job is not completed yet"}}
+    client = _make_client(lambda _request: httpx.Response(409, json=body))
+    with pytest.raises(APIError) as exc:
+        client.get_job_result_archive("j-1")
+    assert exc.value.code == "JOB_NOT_COMPLETED"
+
+
+def test_submit_lulc_posts_month() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"job_id": "j-1", "status": "pending"})
+
+    client = _make_client(handler)
+    client.submit_analysis(
+        AnalysisRequest(
+            AnalysisType.LULC, satellite_id="sentinel-2", polygon="POLY", month="2026-08"
+        )
+    )
+    assert captured["url"].endswith("/api/v1/analyze/lulc")
+    assert captured["body"] == {"satellite_id": "sentinel-2", "polygon": "POLY", "month": "2026-08"}
