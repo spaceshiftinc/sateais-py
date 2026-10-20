@@ -5,8 +5,7 @@
 The official Python SDK and CLI for SateAIs. It provides unified programmatic and
 command-line access to the SAR satellite image analysis APIs (ship detection,
 oil slick detection, new / disappeared building detection, and time-series change
-detection). The currently supported satellite is Sentinel-1, with additional
-satellites planned in future releases.
+detection), plus land use / land cover (LULC) classification that also uses Sentinel-2.
 
 ```bash
 pip install sateais
@@ -56,6 +55,7 @@ export SATEAIS_API_KEY=sk_live_xxxxx
 | `client.analyze.newbuilding(...)` | `polygon`+`date_start`+`date_end` |
 | `client.analyze.disappearbuilding(...)` | Same as above |
 | `client.analyze.timeseries(...)` | Same as above |
+| `client.analyze.lulc(...)` | `polygon`+`month` (result is a zip archive) |
 
 See the [API reference](https://docs.spcsft.com/) for detailed parameters.
 
@@ -100,6 +100,28 @@ if preview.credits.sufficient:
 - `coverage` is returned for inputs that specify a `polygon` (not for `scene_id` inputs, and not when the scene search is unavailable). `None` means "cannot be determined", which is different from "100% will be analyzed" (`ratio=1.0`)
 - For inputs where the billed area is not the requested polygon (e.g. `scene_id`), `credits.estimated` is `None` and `warnings` contains `CREDITS_NOT_ESTIMABLE`
 
+### Land use / land cover (LULC)
+
+Classifies every 10 m pixel into 15 classes from a year of Sentinel-2 and Sentinel-1 imagery.
+The result is a zip archive (`classes.tif` / `class_stats.json` / `legend.json` /
+`visual.png`), not GeoJSON, so use `jobs.wait_archive()` / `jobs.result_archive()` to get it
+as bytes.
+
+```python
+from pathlib import Path
+
+polygon = "POLYGON((136.27 36.23, 136.37 36.23, 136.37 36.33, 136.27 36.33, 136.27 36.23))"
+preview = client.preview.lulc(polygon=polygon, month="2026-08")   # estimated on the bounding box
+job = client.analyze.lulc(polygon=polygon, month="2026-08")       # analyses 2025-09 to 2026-08
+Path("lulc.zip").write_bytes(client.jobs.wait_archive(job.job_id))
+```
+
+- `month` is the last month of the 12-month period (`YYYY-MM`): **even months only**, `2018-02` or later, and already ended
+- The polygon's **whole bounding box** is analysed and billed (bounding-box area 0.5–350 km²). Keep AOIs close to a rectangle
+- `satellite_id` must be `"sentinel-2"` (the default; Sentinel-1 is also used internally, but permission is checked on Sentinel-2)
+- `scene_id` / `date*` / `orbit_direction` are not accepted
+- Calling `jobs.wait()` on a job with a zip result raises `SateAIsError` pointing to `wait_archive()`
+
 ### Job management
 
 ```python
@@ -111,6 +133,9 @@ geojson = client.jobs.wait(
     timeout=600,                            # seconds, None for no limit
     on_poll=lambda j: print(j.status),      # progress callback
 )
+data = client.jobs.result_archive(job_id)   # zip result (lulc) as bytes
+data = client.jobs.wait_archive(job_id)     # same, after waiting (same arguments as wait)
+job.result_is_archive                       # whether the result is a zip (known once completed)
 ```
 
 ### Exceptions
@@ -135,7 +160,7 @@ sateais login [--api-key sk_...]                  # save the API key (prompts if
 sateais analyze <endpoint> [options] [--wait] [-o FILE]
 sateais preview <endpoint> [options] [-o FILE]    # analyzed area and cost estimate, no job
 sateais jobs status <job_id>
-sateais jobs result <job_id> [-o FILE]
+sateais jobs result <job_id> [-o FILE]           # -o is required for zip results (lulc)
 sateais jobs wait   <job_id> [-o FILE] [--poll-interval N] [--timeout N]
 sateais scene <scene_id>                          # decode a Sentinel-1 scene ID into its components
 ```
@@ -170,6 +195,17 @@ sateais preview newbuilding \
 A `null` in `credits.estimated` means "not determinable before submission", not "free",
 and a `null` `coverage` means "cannot be determined". Do not render them as 0 or 100%.
 
+### Land use / land cover (LULC)
+
+The result is a zip archive, so `--wait`, `jobs result` and `jobs wait` require `-o FILE`.
+If `-o` is missing on `analyze lulc --wait`, the CLI fails before submitting (and before any
+credits are consumed).
+
+```bash
+sateais preview lulc --polygon "POLYGON((...))" --month 2026-08
+sateais analyze lulc --polygon "POLYGON((...))" --month 2026-08 --wait -o lulc.zip
+```
+
 ### Passing parameters as JSON
 
 Instead of individual flags, `analyze` / `preview` parameters can be supplied together via
@@ -190,7 +226,7 @@ sateais analyze ship --json @base.json --scene-id S1A_OTHER
 ```
 
 Accepted keys: `satellite_id` / `scene_id` / `polygon` / `date` /
-`date_start` / `date_end` / `date_direction` / `orbit_direction`.
+`date_start` / `date_end` / `date_direction` / `orbit_direction` / `month`.
 Unknown keys raise an error.
 
 ### Exit codes

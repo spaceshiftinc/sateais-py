@@ -16,10 +16,18 @@ from ._errors import (
     CredentialsNotFoundError,
     JobFailedError,
     JobTimeoutError,
+    SateAIsError,
     UnknownJobStatusError,
 )
 from ._http import DEFAULT_API_BASE_URL, ApiClient, HttpApiClient
-from ._types import AnalysisPreview, AnalysisRequest, AnalysisType, Job, JobStatus
+from ._types import (
+    LULC_SATELLITE_ID,
+    AnalysisPreview,
+    AnalysisRequest,
+    AnalysisType,
+    Job,
+    JobStatus,
+)
 
 ENV_API_KEY = "SATEAIS_API_KEY"
 ENV_BASE_URL = "SATEAIS_BASE_URL"
@@ -44,6 +52,11 @@ class Client:
         >>> preview = client.preview.newbuilding(
         ...     polygon="POLYGON((...))", date_start="2025-01-01", date_end="2025-06-30"
         ... )
+
+        土地利用・土地被覆（結果は zip アーカイブ）:
+
+        >>> job = client.analyze.lulc(polygon="POLYGON((...))", month="2026-08")
+        >>> archive = client.jobs.wait_archive(job.job_id)
 
     Args:
         api_key: APIキー。未指定時は環境変数 `SATEAIS_API_KEY`、
@@ -243,6 +256,34 @@ class _AnalysisEndpoints(Generic[T]):
             )
         )
 
+    def lulc(
+        self,
+        *,
+        polygon: str,
+        month: str,
+        satellite_id: str = LULC_SATELLITE_ID,
+    ) -> T:
+        """土地利用・土地被覆（LULC）分類の入力を送る
+
+        Sentinel-2 と Sentinel-1 の 1 年分を使い、10 m 画素ごとに 15 クラスへ分類する。
+        結果は GeoJSON ではなく zip アーカイブ（`Jobs.result_archive` で取得）。
+
+        Args:
+            polygon: WKT polygon (EPSG:4326)。外接矩形全体が解析・課金される。
+                外接矩形の面積は 0.5〜350 km²
+            month: 解析期間の最終月 YYYY-MM。偶数月のみ・2018-02 以降・経過済みの月。
+                "2026-08" なら 2025-09-01〜2026-08-31 を解析する
+            satellite_id: "sentinel-2" 固定（API が要求するため）
+        """
+        return self._dispatch(
+            AnalysisRequest(
+                analysis_type=AnalysisType.LULC,
+                satellite_id=satellite_id,
+                polygon=polygon,
+                month=month,
+            )
+        )
+
     def _dispatch(self, request: AnalysisRequest) -> T:
         """検証済みの入力をどこへ送るかをサブクラスが決める"""
         raise NotImplementedError
@@ -296,8 +337,20 @@ class Jobs:
         return self._api.get_job(job_id)
 
     def result(self, job_id: str) -> dict[str, Any]:
-        """完了したジョブの結果 GeoJSON を取得する"""
+        """完了したジョブの結果 GeoJSON を取得する
+
+        結果が zip アーカイブのジョブ（lulc）には `result_archive` を使う。
+        """
         return self._api.get_job_result(job_id)
+
+    def result_archive(self, job_id: str) -> bytes:
+        """完了したジョブの結果 zip アーカイブを取得する（lulc など）
+
+        Example:
+            >>> from pathlib import Path
+            >>> Path("lulc.zip").write_bytes(client.jobs.result_archive(job_id))
+        """
+        return self._api.get_job_result_archive(job_id)
 
     def wait(
         self,
@@ -309,6 +362,8 @@ class Jobs:
         max_unknown_polls: int = 10,
     ) -> dict[str, Any]:
         """ジョブが完了するまで待機し、結果 GeoJSON を返す
+
+        結果が zip アーカイブのジョブ（lulc）には `wait_archive` を使う。
 
         Args:
             job_id: ジョブID
@@ -323,6 +378,63 @@ class Jobs:
             JobFailedError: ジョブが failed 状態で終了した場合
             JobTimeoutError: timeout を超えても完了しなかった場合
             UnknownJobStatusError: UNKNOWN が max_unknown_polls 回連続した場合
+            SateAIsError: 結果が zip アーカイブのジョブだった場合
+        """
+        job = self._wait_completed(
+            job_id,
+            poll_interval=poll_interval,
+            timeout=timeout,
+            on_poll=on_poll,
+            max_unknown_polls=max_unknown_polls,
+        )
+        if job.result_is_archive:
+            raise SateAIsError(
+                f"Job {job_id} produces a zip archive, not GeoJSON; use jobs.wait_archive() "
+                "or jobs.result_archive() instead."
+            )
+        return self._api.get_job_result(job_id)
+
+    def wait_archive(
+        self,
+        job_id: str,
+        *,
+        poll_interval: float = 10.0,
+        timeout: float | None = None,
+        on_poll: PollCallback | None = None,
+        max_unknown_polls: int = 10,
+    ) -> bytes:
+        """ジョブが完了するまで待機し、結果 zip アーカイブを返す（lulc など）
+
+        引数と送出する例外は `wait` と同じ。結果が GeoJSON のジョブだった場合は
+        `SateAIsError` を送出する。
+        """
+        job = self._wait_completed(
+            job_id,
+            poll_interval=poll_interval,
+            timeout=timeout,
+            on_poll=on_poll,
+            max_unknown_polls=max_unknown_polls,
+        )
+        # result_path が無い（古い API 応答）場合は形式を判定できないので取得を試みる
+        if job.result_path is not None and not job.result_is_archive:
+            raise SateAIsError(
+                f"Job {job_id} produces GeoJSON, not a zip archive; use jobs.wait() "
+                "or jobs.result() instead."
+            )
+        return self._api.get_job_result_archive(job_id)
+
+    def _wait_completed(
+        self,
+        job_id: str,
+        *,
+        poll_interval: float,
+        timeout: float | None,
+        on_poll: PollCallback | None,
+        max_unknown_polls: int = 10,
+    ) -> Job:
+        """ジョブが completed になるまでポーリングし、その時点の Job を返す
+
+        結果の取得は呼び出し側に任せる（結果の形式がジョブ種別で異なるため）。
         """
         start = time.monotonic()
         unknown_streak = 0
@@ -332,7 +444,7 @@ class Jobs:
                 on_poll(job)
 
             if job.is_completed:
-                return self._api.get_job_result(job_id)
+                return job
             if job.is_failed:
                 raise JobFailedError(job)
 

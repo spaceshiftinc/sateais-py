@@ -69,6 +69,14 @@ class Job:
     def is_failed(self) -> bool:
         return self.status == JobStatus.FAILED
 
+    @property
+    def result_is_archive(self) -> bool:
+        """結果が GeoJSON ではなく zip アーカイブか（lulc など）
+
+        `result_path` は completed のときだけ返るため、それ以外では常に False。
+        """
+        return self.result_path is not None and self.result_path.endswith(".zip")
+
 
 class AnalysisType(str, Enum):
     """解析ジョブの種別"""
@@ -78,6 +86,7 @@ class AnalysisType(str, Enum):
     NEWBUILDING = "newbuilding"
     DISAPPEARBUILDING = "disappearbuilding"
     TIMESERIES = "timeseries"
+    LULC = "lulc"
 
     @property
     def accepts_scene_or_polygon_date(self) -> bool:
@@ -93,6 +102,24 @@ class AnalysisType(str, Enum):
             AnalysisType.TIMESERIES,
         )
 
+    @property
+    def requires_month(self) -> bool:
+        """この種別のジョブが polygon + month データのみを受け入れるか"""
+        return self is AnalysisType.LULC
+
+    @property
+    def default_satellite_id(self) -> str:
+        """この種別で既定とする satellite_id
+
+        lulc は内部で Sentinel-1 と Sentinel-2 の両方を使うが、権限が
+        エンドポイント×衛星で付与されるため API が "sentinel-2" を要求する。
+        """
+        return LULC_SATELLITE_ID if self is AnalysisType.LULC else "sentinel-1"
+
+
+#: lulc で指定を要求される satellite_id
+LULC_SATELLITE_ID = "sentinel-2"
+
 
 @dataclass(frozen=True)
 class AnalysisRequest:
@@ -102,8 +129,8 @@ class AnalysisRequest:
 
     Attributes:
         analysis_type: 解析種別
-        satellite_id: 衛星ID。現状の対応値は "sentinel-1"（デフォルト）。
-            今後対応衛星が増えた場合は他の値も指定可能になる。
+        satellite_id: 衛星ID。既定は "sentinel-1"。lulc では "sentinel-2" 固定
+            （`AnalysisType.default_satellite_id` 参照）。
         scene_id: シーンID（ship/oilslick のシーン指定モード）
         polygon: WKT polygon (EPSG:4326)
         date: 基準日 YYYY-MM-DD（ship/oilslick の polygon モード）
@@ -111,6 +138,7 @@ class AnalysisRequest:
         date_end: 終了日 YYYY-MM-DD（同上）
         date_direction: "before" / "after" / "nearest"
         orbit_direction: "ascending" / "descending"
+        month: 解析期間の最終月 YYYY-MM（lulc）。この月で終わる 12 ヶ月を解析する
     """
 
     analysis_type: AnalysisType
@@ -122,6 +150,7 @@ class AnalysisRequest:
     date_end: str | None = None
     date_direction: str | None = None
     orbit_direction: str | None = None
+    month: str | None = None
 
     def validate(self) -> None:
         """必須パラメータの組み合わせを検証する
@@ -130,6 +159,11 @@ class AnalysisRequest:
             InvalidAnalysisRequestError: 組み合わせが不正な場合
         """
         t = self.analysis_type
+        if t.requires_month:
+            self._validate_polygon_month()
+            return
+        if self.month is not None:
+            raise InvalidAnalysisRequestError(f"{t.value} does not accept month")
         if t.accepts_scene_or_polygon_date:
             has_scene = bool(self.scene_id)
             has_polygon_date = bool(self.polygon) and bool(self.date)
@@ -145,6 +179,35 @@ class AnalysisRequest:
                     f"{t.value} requires polygon, date_start, and date_end"
                 )
 
+    def _validate_polygon_month(self) -> None:
+        """polygon + month のみを受け付ける種別（lulc）の組み合わせを検証する
+
+        月そのものの妥当性（偶数月・下限・経過済み）は時刻に依存するため API に任せる。
+        """
+        t = self.analysis_type
+        if not (self.polygon and self.month):
+            raise InvalidAnalysisRequestError(f"{t.value} requires polygon and month")
+        extra = [
+            name
+            for name, value in (
+                ("scene_id", self.scene_id),
+                ("date", self.date),
+                ("date_start", self.date_start),
+                ("date_end", self.date_end),
+                ("date_direction", self.date_direction),
+                ("orbit_direction", self.orbit_direction),
+            )
+            if value is not None
+        ]
+        if extra:
+            raise InvalidAnalysisRequestError(
+                f"{t.value} accepts only polygon and month (got {', '.join(extra)})"
+            )
+        if self.satellite_id != LULC_SATELLITE_ID:
+            raise InvalidAnalysisRequestError(
+                f"{t.value} requires satellite_id={LULC_SATELLITE_ID!r} (got {self.satellite_id!r})"
+            )
+
     def to_body(self) -> dict[str, str]:
         """APIリクエストボディ dict に変換する（None フィールドは除外）"""
         fields = {
@@ -156,6 +219,7 @@ class AnalysisRequest:
             "date_end": self.date_end,
             "date_direction": self.date_direction,
             "orbit_direction": self.orbit_direction,
+            "month": self.month,
         }
         return {k: v for k, v in fields.items() if v is not None}
 

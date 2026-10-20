@@ -6,6 +6,31 @@
 
 ## [Unreleased]
 
+Sentinel-2 を併用した土地利用・土地被覆分類（LULC）への対応が主な内容。API の
+`POST /api/v1/analyze/lulc` と `GET /api/v1/jobs/{job_id}/result.zip` に追随する。
+
+### Added
+
+- SDK: `client.analyze.lulc(polygon=, month=)` / `client.preview.lulc(...)`。
+  `satellite_id` の既定は `"sentinel-2"`（API が要求する値）
+- SDK: `AnalysisType.LULC`、`AnalysisRequest.month`、`AnalysisType.requires_month` /
+  `AnalysisType.default_satellite_id`
+- SDK: 結果が zip アーカイブのジョブ向けに `client.jobs.result_archive()` /
+  `client.jobs.wait_archive()`（いずれも `bytes` を返す）と `Job.result_is_archive`
+- CLI: `sateais analyze lulc` / `sateais preview lulc`（`--polygon` / `--month`）。
+  `--json` でも `month` を受け付ける
+- CLI: `jobs result` / `jobs wait` / `analyze --wait` は結果が zip のジョブなら `-o FILE` に
+  バイナリで書き出す（`-o` なしはエラー。`analyze lulc --wait` は投入前に弾く）
+
+### Changed
+
+- **破壊的変更**: `ApiClient` Protocol に `get_job_result_archive()` を追加。独自実装を
+  `Client(api=...)` に注入している場合は同メソッドの追加が必要（0.x のため minor で出す）
+- `AnalysisRequest.validate()` が lulc 以外の種別での `month` 指定を拒否する
+- `client.jobs.wait()` は結果が zip のジョブで、GeoJSON の取得を試みず `SateAIsError` を送出し
+  `wait_archive()` を案内する（従来は JSON デコード失敗の `APIError` になっていた）
+- CLI: `jobs result` は結果の形式を判定するため、取得前にジョブの状態を 1 回問い合わせる
+
 ## [0.2.0] - 2026-09-01
 
 投入前プレビューへの対応が主な内容。API の `POST /api/v1/analyze/{endpoint}/preview`

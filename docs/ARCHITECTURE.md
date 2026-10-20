@@ -60,6 +60,7 @@ class ApiClient(Protocol):
     def preview_analysis(self, request: AnalysisRequest) -> AnalysisPreview: ...
     def get_job(self, job_id: str) -> Job: ...
     def get_job_result(self, job_id: str) -> dict[str, Any]: ...
+    def get_job_result_archive(self, job_id: str) -> bytes: ...
     def close(self) -> None: ...
 ```
 
@@ -98,6 +99,19 @@ class ApiClient(Protocol):
   1 行ログ（`cli._process_callback`）にフォールバックする。
 - 結果 GeoJSON は stdout、アニメーション / ログは stderr に分離しているため、
   `sateais ... --wait > out.geojson` の出力は演出に汚染されない。
+
+## 結果の形式（GeoJSON / zip アーカイブ）
+
+検出系（ship など）の結果は GeoJSON、lulc の結果は zip アーカイブ（`result.zip`）。
+形式はジョブ種別ではなく `Job.result_path`（completed のときだけ返る）の拡張子で判定する
+（`Job.result_is_archive`）。種別との対応を SDK に二重管理しないため。
+
+- `Jobs.result` / `Jobs.wait` は GeoJSON の `dict`、`Jobs.result_archive` / `Jobs.wait_archive`
+  は zip の `bytes` を返す。戻り型を分けて `wait()` の型を壊さない
+- ポーリングは `Jobs._wait_completed()` に集約し、結果の取得だけを各メソッドが行う。
+  CLI もこれを使い、待ち終えた `Job` の形式を見て出力方法を決める（`cli._output_result`）
+- zip は端末を汚さないよう CLI では `-o FILE` への書き出しのみ。`analyze lulc --wait` は
+  `-o` 漏れを投入前に弾く（待ち終えてから失敗するとクレジットだけ消費されるため）
 
 ## 投入とプレビューの共通化（`_AnalysisEndpoints`）
 

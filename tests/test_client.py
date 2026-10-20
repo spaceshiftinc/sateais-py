@@ -18,6 +18,7 @@ from sateais import (
     JobFailedError,
     JobStatus,
     JobTimeoutError,
+    SateAIsError,
     UnknownJobStatusError,
 )
 from tests.conftest import FakeApiClient, make_job, make_preview
@@ -221,3 +222,68 @@ def test_preview_insufficient_credits_does_not_raise() -> None:
 
     assert preview.credits.sufficient is False
     assert preview.credits.shortfall == 470.0
+
+
+_LULC_RESULT_PATH = "/api/v1/jobs/j-1/result.zip"
+
+
+def test_analyze_lulc_dispatches_with_sentinel_2() -> None:
+    api = FakeApiClient(next_job=make_job(status=JobStatus.PENDING))
+    client = Client(api_key="sk", api=api)
+    client.analyze.lulc(polygon="POLY", month="2026-08")
+
+    req = api.submitted[0]
+    assert req.analysis_type is AnalysisType.LULC
+    assert req.to_body() == {"satellite_id": "sentinel-2", "polygon": "POLY", "month": "2026-08"}
+
+
+def test_preview_lulc_dispatches_to_preview_endpoint() -> None:
+    api = FakeApiClient(next_preview=make_preview("lulc"))
+    client = Client(api_key="sk", api=api)
+    assert client.preview.lulc(polygon="POLY", month="2026-08").endpoint_id == "lulc"
+    assert api.previewed[0].month == "2026-08"
+    assert api.submitted == []
+
+
+def test_jobs_result_archive_returns_bytes() -> None:
+    api = FakeApiClient(archive=b"PKzip")
+    client = Client(api_key="sk", api=api)
+    assert client.jobs.result_archive("j-1") == b"PKzip"
+    assert api.fetched_archives == ["j-1"]
+
+
+def test_jobs_wait_archive_polls_then_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    api = FakeApiClient(
+        job_sequence=[
+            make_job(status=JobStatus.PROCESSING),
+            make_job(status=JobStatus.COMPLETED, result_path=_LULC_RESULT_PATH),
+        ],
+        archive=b"PKzip",
+    )
+    client = Client(api_key="sk", api=api)
+    assert client.jobs.wait_archive("j-1", poll_interval=0) == b"PKzip"
+    assert api.fetched_results == []
+
+
+def test_jobs_wait_on_archive_job_points_to_wait_archive(monkeypatch: pytest.MonkeyPatch) -> None:
+    # GeoJSON として取りに行くと zip を JSON デコードして分かりにくい失敗になるため、先に止める
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    api = FakeApiClient(
+        next_job=make_job(status=JobStatus.COMPLETED, result_path=_LULC_RESULT_PATH)
+    )
+    client = Client(api_key="sk", api=api)
+    with pytest.raises(SateAIsError, match="wait_archive"):
+        client.jobs.wait("j-1", poll_interval=0)
+    assert api.fetched_results == []
+
+
+def test_jobs_wait_archive_on_geojson_job_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    api = FakeApiClient(
+        next_job=make_job(status=JobStatus.COMPLETED, result_path="/api/v1/jobs/j-1/result.geojson")
+    )
+    client = Client(api_key="sk", api=api)
+    with pytest.raises(SateAIsError, match="jobs.wait"):
+        client.jobs.wait_archive("j-1", poll_interval=0)
+    assert api.fetched_archives == []

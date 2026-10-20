@@ -35,6 +35,15 @@ class TestJob:
         assert completed.is_terminal and completed.is_completed
         assert failed.is_terminal and failed.is_failed
 
+    def test_result_is_archive_follows_result_path(self) -> None:
+        assert Job(
+            "a", JobStatus.COMPLETED, result_path="/api/v1/jobs/a/result.zip"
+        ).result_is_archive
+        assert not Job(
+            "a", JobStatus.COMPLETED, result_path="/api/v1/jobs/a/result.geojson"
+        ).result_is_archive
+        assert not Job("a", JobStatus.PROCESSING).result_is_archive
+
 
 class TestAnalysisType:
     def test_input_pattern_flags(self) -> None:
@@ -46,6 +55,15 @@ class TestAnalysisType:
         assert AnalysisType.DISAPPEARBUILDING.requires_date_range
         assert AnalysisType.TIMESERIES.requires_date_range
         assert not AnalysisType.SHIP.requires_date_range
+
+        assert AnalysisType.LULC.requires_month
+        assert not AnalysisType.LULC.accepts_scene_or_polygon_date
+        assert not AnalysisType.LULC.requires_date_range
+        assert not AnalysisType.TIMESERIES.requires_month
+
+    def test_default_satellite_id(self) -> None:
+        assert AnalysisType.LULC.default_satellite_id == "sentinel-2"
+        assert AnalysisType.SHIP.default_satellite_id == "sentinel-1"
 
 
 class TestAnalysisRequestValidate:
@@ -76,6 +94,38 @@ class TestAnalysisRequestValidate:
             date_start="2024-01-01",
             date_end="2024-12-01",
         ).validate()
+
+
+class TestAnalysisRequestValidateLulc:
+    def _lulc(self, **kwargs: str) -> AnalysisRequest:
+        params = {"satellite_id": "sentinel-2", "polygon": "POLY", "month": "2026-08"}
+        params.update(kwargs)
+        return AnalysisRequest(AnalysisType.LULC, **params)
+
+    def test_polygon_and_month_ok(self) -> None:
+        self._lulc().validate()
+
+    @pytest.mark.parametrize("missing", ["polygon", "month"])
+    def test_requires_polygon_and_month(self, missing: str) -> None:
+        with pytest.raises(InvalidAnalysisRequestError, match="requires polygon and month"):
+            self._lulc(**{missing: ""}).validate()
+
+    @pytest.mark.parametrize(
+        "field",
+        ["scene_id", "date", "date_start", "date_end", "date_direction", "orbit_direction"],
+    )
+    def test_rejects_other_inputs(self, field: str) -> None:
+        with pytest.raises(InvalidAnalysisRequestError, match=field):
+            self._lulc(**{field: "x"}).validate()
+
+    def test_requires_sentinel_2(self) -> None:
+        # dataclass の既定 satellite_id は sentinel-1 なので、直接組み立てた場合に弾く
+        with pytest.raises(InvalidAnalysisRequestError, match="sentinel-2"):
+            AnalysisRequest(AnalysisType.LULC, polygon="POLY", month="2026-08").validate()
+
+    def test_other_types_reject_month(self) -> None:
+        with pytest.raises(InvalidAnalysisRequestError, match="does not accept month"):
+            AnalysisRequest(AnalysisType.SHIP, scene_id="S1A_X", month="2026-08").validate()
 
 
 class TestAnalysisRequestToBody:

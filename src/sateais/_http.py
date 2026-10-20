@@ -35,6 +35,8 @@ from ._version import __version__
 
 DEFAULT_API_BASE_URL = "https://api.spcsft.com/api/v1"
 
+_ZIP_MAGIC = b"PK"
+
 _STATUS_CODE_MAP: dict[int, type[APIError]] = {
     400: ValidationError,
     401: AuthenticationError,
@@ -57,6 +59,7 @@ class ApiClient(Protocol):
     def preview_analysis(self, request: AnalysisRequest) -> AnalysisPreview: ...
     def get_job(self, job_id: str) -> Job: ...
     def get_job_result(self, job_id: str) -> dict[str, Any]: ...
+    def get_job_result_archive(self, job_id: str) -> bytes: ...
     def close(self) -> None: ...
 
 
@@ -129,6 +132,14 @@ class HttpApiClient:
                 f"expected JSON object in response body, got {type(body).__name__}",
             )
         return body
+
+    def get_job_result_archive(self, job_id: str) -> bytes:
+        resp = self._request("GET", f"/jobs/{job_id}/result.zip")
+        # 署名付き URL の失効ページ等が 200 で返った場合に、それを .zip として
+        # 書き出させないよう zip のマジックナンバーだけ確認する。
+        if not resp.content.startswith(_ZIP_MAGIC):
+            raise APIError(resp.status_code, None, "expected zip archive in response body")
+        return resp.content
 
     def close(self) -> None:
         if self.owns_http:

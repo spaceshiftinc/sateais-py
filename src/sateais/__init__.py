@@ -1,6 +1,6 @@
 """SateAIs Python SDK
 
-Sentinel-1 SAR 衛星画像解析プラットフォーム SateAIs の公式 Python SDK / CLI。
+SAR 衛星画像解析プラットフォーム SateAIs の公式 Python SDK / CLI。
 
 Quickstart:
     >>> from sateais import Client
