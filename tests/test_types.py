@@ -61,9 +61,20 @@ class TestAnalysisType:
         assert not AnalysisType.LULC.requires_date_range
         assert not AnalysisType.TIMESERIES.requires_month
 
+        assert AnalysisType.EMBANKMENT.requires_date_range
+        assert not AnalysisType.EMBANKMENT.requires_month
+
     def test_default_satellite_id(self) -> None:
         assert AnalysisType.LULC.default_satellite_id == "sentinel-2"
+        assert AnalysisType.EMBANKMENT.default_satellite_id == "sentinel-2"
         assert AnalysisType.SHIP.default_satellite_id == "sentinel-1"
+
+    def test_fixed_satellite_and_orbit_direction(self) -> None:
+        assert AnalysisType.EMBANKMENT.fixed_satellite_id == "sentinel-2"
+        assert AnalysisType.NEWBUILDING.fixed_satellite_id is None
+        assert not AnalysisType.EMBANKMENT.accepts_orbit_direction
+        assert not AnalysisType.LULC.accepts_orbit_direction
+        assert AnalysisType.TIMESERIES.accepts_orbit_direction
 
 
 class TestAnalysisRequestValidate:
@@ -126,6 +137,49 @@ class TestAnalysisRequestValidateLulc:
     def test_other_types_reject_month(self) -> None:
         with pytest.raises(InvalidAnalysisRequestError, match="does not accept month"):
             AnalysisRequest(AnalysisType.SHIP, scene_id="S1A_X", month="2026-08").validate()
+
+
+class TestAnalysisRequestValidateEmbankment:
+    def _embankment(self, **kwargs: str) -> AnalysisRequest:
+        params = {
+            "satellite_id": "sentinel-2",
+            "polygon": "POLY",
+            "date_start": "2025-05-01",
+            "date_end": "2026-05-01",
+        }
+        params.update(kwargs)
+        return AnalysisRequest(AnalysisType.EMBANKMENT, **params)
+
+    def test_polygon_and_date_range_ok(self) -> None:
+        self._embankment().validate()
+
+    @pytest.mark.parametrize("missing", ["polygon", "date_start", "date_end"])
+    def test_requires_polygon_and_date_range(self, missing: str) -> None:
+        with pytest.raises(InvalidAnalysisRequestError, match="requires polygon"):
+            self._embankment(**{missing: ""}).validate()
+
+    def test_rejects_orbit_direction(self) -> None:
+        # Sentinel-2 には効かず API が黙って無視するので、投入前に止める
+        with pytest.raises(InvalidAnalysisRequestError, match="orbit_direction"):
+            self._embankment(orbit_direction="ascending").validate()
+
+    @pytest.mark.parametrize("satellite_id", ["sentinel-1", "alos-2"])
+    def test_requires_sentinel_2(self, satellite_id: str) -> None:
+        with pytest.raises(InvalidAnalysisRequestError, match="sentinel-2"):
+            self._embankment(satellite_id=satellite_id).validate()
+
+    def test_rejects_month(self) -> None:
+        with pytest.raises(InvalidAnalysisRequestError, match="does not accept month"):
+            self._embankment(month="2026-08").validate()
+
+    def test_other_date_range_types_still_accept_orbit_direction(self) -> None:
+        AnalysisRequest(
+            AnalysisType.NEWBUILDING,
+            polygon="POLY",
+            date_start="2025-01-01",
+            date_end="2025-06-30",
+            orbit_direction="ascending",
+        ).validate()
 
 
 class TestAnalysisRequestToBody:

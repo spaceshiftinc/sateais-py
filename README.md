@@ -4,7 +4,7 @@
 
 SateAIs の公式 Python SDK および CLI です。SAR 衛星画像の解析 API
 （船舶検出 / オイルスリック検出 / 新規・消失建物検出 / 時系列変化検出）と、
-Sentinel-2 を併用した土地利用・土地被覆分類（LULC）に、
+Sentinel-2 を使う土地利用・土地被覆分類（LULC）・盛土検知に、
 プログラムおよびコマンドラインから統一的にアクセスできます。
 
 ```bash
@@ -56,6 +56,7 @@ export SATEAIS_API_KEY=sk_live_xxxxx
 | `client.analyze.disappearbuilding(...)` | 同上 |
 | `client.analyze.timeseries(...)` | 同上 |
 | `client.analyze.lulc(...)` | `polygon`+`month`（結果は zip アーカイブ） |
+| `client.analyze.embankment(...)` | `polygon`+`date_start`+`date_end`（Sentinel-2） |
 
 詳細パラメータは [API リファレンス](https://docs.spcsft.com/) 参照。
 
@@ -119,6 +120,25 @@ Path("lulc.zip").write_bytes(client.jobs.wait_archive(job.job_id))
 - `satellite_id` は `"sentinel-2"` 固定です（既定値。内部では Sentinel-1 も使いますが、権限は Sentinel-2 で判定されます）
 - `scene_id` / `date*` / `orbit_direction` は指定できません
 - 結果が zip のジョブに `jobs.wait()` を使うと、`SateAIsError` で `wait_archive()` を案内します
+
+### 盛土検知
+
+期間の両端付近から雲の少ない Sentinel-2 シーンを 1 枚ずつ選んで比べ、盛土（土地の嵩上げ）と
+みられる範囲をポリゴンで返します。結果は他の検知系と同じ GeoJSON（properties は
+`area_sqm` / `confidence`）なので、`jobs.wait()` / `jobs.result()` で受け取れます。
+
+```python
+polygon = "POLYGON((136.85 35.10, 136.95 35.10, 136.95 35.18, 136.85 35.18, 136.85 35.10))"
+preview = client.preview.embankment(polygon=polygon, date_start="2025-05-01", date_end="2026-05-01")
+job = client.analyze.embankment(polygon=polygon, date_start="2025-05-01", date_end="2026-05-01")
+geojson = client.jobs.wait(job.job_id)
+```
+
+- polygon の面積は 0.1〜12,500 km²、期間は最大 1,095 日（3 年）
+- **解析するのは Sentinel-2 のタイル 1 枚分だけ**です。範囲がタイルをまたぐと、タイルの外は解析も課金もされません。
+  解析される割合はプレビューの `coverage` で投入前に確認できます（見積もりもその範囲の面積で出ます）
+- `satellite_id` は `"sentinel-2"` 固定です（既定値）。`orbit_direction` は指定できません
+- 対応しているのは Sentinel-2 版のみです。ALOS-2 版（アップロードした GeoTIFF 2 枚を比べる）は SDK からは使えません
 
 ### ジョブ管理
 
@@ -201,6 +221,14 @@ sateais preview newbuilding \
 ```bash
 sateais preview lulc --polygon "POLYGON((...))" --month 2026-08
 sateais analyze lulc --polygon "POLYGON((...))" --month 2026-08 --wait -o lulc.zip
+```
+
+### 盛土検知
+
+```bash
+sateais preview embankment --polygon "POLYGON((...))" --date-start 2025-05-01 --date-end 2026-05-01
+sateais analyze embankment --polygon "POLYGON((...))" --date-start 2025-05-01 --date-end 2026-05-01 \
+  --wait -o embankment.geojson
 ```
 
 ### パラメータを JSON でまとめて渡す

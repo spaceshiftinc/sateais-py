@@ -6,10 +6,19 @@
 
 ## [Unreleased]
 
-Sentinel-2 を併用した土地利用・土地被覆分類（LULC）への対応が主な内容。API の
-`POST /api/v1/analyze/lulc` と `GET /api/v1/jobs/{job_id}/result.zip` に追随する。
+Sentinel-2 を使う土地利用・土地被覆分類（LULC）と盛土検知への対応が主な内容。API の
+`POST /api/v1/analyze/lulc` / `POST /api/v1/analyze/embankment` と
+`GET /api/v1/jobs/{job_id}/result.zip` に追随する。
 
 ### Added
+
+- SDK: `client.analyze.embankment(polygon=, date_start=, date_end=)` /
+  `client.preview.embankment(...)`（盛土検知の Sentinel-2 版。結果は GeoJSON）。
+  `satellite_id` の既定は `"sentinel-2"`。ALOS-2 版（`before_tif_id` + `after_tif_id`）は未対応
+- SDK: `AnalysisType.EMBANKMENT`、`AnalysisType.fixed_satellite_id` /
+  `AnalysisType.accepts_orbit_direction`
+- CLI: `sateais analyze embankment` / `sateais preview embankment`
+  （`--polygon` / `--date-start` / `--date-end`）
 
 - SDK: `client.analyze.lulc(polygon=, month=)` / `client.preview.lulc(...)`。
   `satellite_id` の既定は `"sentinel-2"`（API が要求する値）
