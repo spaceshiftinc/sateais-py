@@ -21,7 +21,7 @@ from ._errors import (
 )
 from ._http import DEFAULT_API_BASE_URL, ApiClient, HttpApiClient
 from ._types import (
-    LULC_SATELLITE_ID,
+    SENTINEL_2_SATELLITE_ID,
     AnalysisPreview,
     AnalysisRequest,
     AnalysisType,
@@ -57,6 +57,13 @@ class Client:
 
         >>> job = client.analyze.lulc(polygon="POLYGON((...))", month="2026-08")
         >>> archive = client.jobs.wait_archive(job.job_id)
+
+        盛土検知（Sentinel-2 の 2 時期比較、結果は GeoJSON）:
+
+        >>> job = client.analyze.embankment(
+        ...     polygon="POLYGON((...))", date_start="2025-05-01", date_end="2026-05-01"
+        ... )
+        >>> result = client.jobs.wait(job.job_id)
 
     Args:
         api_key: APIキー。未指定時は環境変数 `SATEAIS_API_KEY`、
@@ -261,7 +268,7 @@ class _AnalysisEndpoints(Generic[T]):
         *,
         polygon: str,
         month: str,
-        satellite_id: str = LULC_SATELLITE_ID,
+        satellite_id: str = SENTINEL_2_SATELLITE_ID,
     ) -> T:
         """土地利用・土地被覆（LULC）分類の入力を送る
 
@@ -281,6 +288,40 @@ class _AnalysisEndpoints(Generic[T]):
                 satellite_id=satellite_id,
                 polygon=polygon,
                 month=month,
+            )
+        )
+
+    def embankment(
+        self,
+        *,
+        polygon: str,
+        date_start: str,
+        date_end: str,
+        satellite_id: str = SENTINEL_2_SATELLITE_ID,
+    ) -> T:
+        """盛土検知の入力を送る（Sentinel-2 版）
+
+        期間の両端付近から雲の少ない Sentinel-2 シーンを 1 枚ずつ選んで比べ、
+        盛土（土地の嵩上げ）とみられる範囲をポリゴンで返す。結果は GeoJSON
+        （properties は `area_sqm` / `confidence`）。
+
+        解析するのは Sentinel-2 のタイル 1 枚分だけで、範囲がタイルをまたぐと
+        タイルの外は解析も課金もされない（割合は `coverage` で分かる）。
+
+        Args:
+            polygon: WKT polygon (EPSG:4326)。面積は 0.1〜12,500 km²
+            date_start: 期間の開始日 YYYY-MM-DD（変化前のシーンをこの付近から選ぶ）
+            date_end: 期間の終了日 YYYY-MM-DD（変化後のシーンをこの付近から選ぶ）。
+                期間は最大 1,095 日（3 年）
+            satellite_id: "sentinel-2" 固定（API が要求するため）
+        """
+        return self._dispatch(
+            AnalysisRequest(
+                analysis_type=AnalysisType.EMBANKMENT,
+                satellite_id=satellite_id,
+                polygon=polygon,
+                date_start=date_start,
+                date_end=date_end,
             )
         )
 

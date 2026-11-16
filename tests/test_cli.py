@@ -506,3 +506,57 @@ def test_jobs_wait_for_archive_job_writes_zip(tmp_path: Path) -> None:
     rc = main(["jobs", "wait", "j-1", "--poll-interval", "0", "-o", str(out_file)], api=api)
     assert rc == 0
     assert out_file.read_bytes() == b"PKzip"
+
+
+_EMBANKMENT_ARGS = ["--polygon", "POLY", "--date-start", "2025-05-01", "--date-end", "2026-05-01"]
+
+
+@pytest.mark.parametrize(
+    ("command", "recorded"),
+    [("preview", "previewed"), ("analyze", "submitted")],
+)
+def test_embankment_defaults_to_sentinel_2(command: str, recorded: str) -> None:
+    api = FakeApiClient(next_job=make_job(), next_preview=make_preview("embankment"))
+    rc = main([command, "embankment", *_EMBANKMENT_ARGS], api=api)
+    assert rc == 0
+    req = getattr(api, recorded)[0]
+    assert req.to_body() == {
+        "satellite_id": "sentinel-2",
+        "polygon": "POLY",
+        "date_start": "2025-05-01",
+        "date_end": "2026-05-01",
+    }
+
+
+def test_embankment_has_no_orbit_direction_flag(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["analyze", "embankment", *_EMBANKMENT_ARGS, "--orbit-direction", "ascending"])
+    assert "unrecognized arguments" in capsys.readouterr().err
+
+
+def test_embankment_orbit_direction_from_json_is_rejected(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    api = FakeApiClient(next_job=make_job())
+    rc = main(
+        ["analyze", "embankment", *_EMBANKMENT_ARGS, "--json", '{"orbit_direction": "ascending"}'],
+        api=api,
+    )
+    assert rc == 1
+    assert "orbit_direction" in capsys.readouterr().err
+    assert api.submitted == []
+
+
+def test_analyze_embankment_wait_outputs_geojson(capsys: pytest.CaptureFixture[str]) -> None:
+    api = FakeApiClient(
+        next_job=make_job(status=JobStatus.PENDING),
+        job_sequence=[
+            make_job(status=JobStatus.COMPLETED, result_path="/api/v1/jobs/j-1/result.geojson")
+        ],
+        result={"type": "FeatureCollection", "features": []},
+    )
+    rc = main(
+        ["analyze", "embankment", *_EMBANKMENT_ARGS, "--wait", "--poll-interval", "0"], api=api
+    )
+    assert rc == 0
+    assert '"FeatureCollection"' in capsys.readouterr().out

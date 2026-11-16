@@ -5,7 +5,8 @@
 The official Python SDK and CLI for SateAIs. It provides unified programmatic and
 command-line access to the SAR satellite image analysis APIs (ship detection,
 oil slick detection, new / disappeared building detection, and time-series change
-detection), plus land use / land cover (LULC) classification that also uses Sentinel-2.
+detection), plus land use / land cover (LULC) classification and embankment detection
+that use Sentinel-2.
 
 ```bash
 pip install sateais
@@ -56,6 +57,7 @@ export SATEAIS_API_KEY=sk_live_xxxxx
 | `client.analyze.disappearbuilding(...)` | Same as above |
 | `client.analyze.timeseries(...)` | Same as above |
 | `client.analyze.lulc(...)` | `polygon`+`month` (result is a zip archive) |
+| `client.analyze.embankment(...)` | `polygon`+`date_start`+`date_end` (Sentinel-2) |
 
 See the [API reference](https://docs.spcsft.com/) for detailed parameters.
 
@@ -121,6 +123,28 @@ Path("lulc.zip").write_bytes(client.jobs.wait_archive(job.job_id))
 - `satellite_id` must be `"sentinel-2"` (the default; Sentinel-1 is also used internally, but permission is checked on Sentinel-2)
 - `scene_id` / `date*` / `orbit_direction` are not accepted
 - Calling `jobs.wait()` on a job with a zip result raises `SateAIsError` pointing to `wait_archive()`
+
+### Embankment detection
+
+Compares two low-cloud Sentinel-2 scenes, one picked near each end of the period, and returns
+areas that look like embankments (raised ground) as polygons. The result is GeoJSON like the
+other detection APIs (properties: `area_sqm` / `confidence`), so use `jobs.wait()` /
+`jobs.result()`.
+
+```python
+polygon = "POLYGON((136.85 35.10, 136.95 35.10, 136.95 35.18, 136.85 35.18, 136.85 35.10))"
+preview = client.preview.embankment(polygon=polygon, date_start="2025-05-01", date_end="2026-05-01")
+job = client.analyze.embankment(polygon=polygon, date_start="2025-05-01", date_end="2026-05-01")
+geojson = client.jobs.wait(job.job_id)
+```
+
+- Polygon area 0.1–12,500 km²; the period can be up to 1,095 days (3 years)
+- **Only one Sentinel-2 tile is analysed.** If the AOI spans tiles, the part outside the chosen
+  tile is neither analysed nor billed. Check the analysed share with the preview's `coverage`
+  before submitting (the estimate is based on that area)
+- `satellite_id` must be `"sentinel-2"` (the default). `orbit_direction` is not accepted
+- Only the Sentinel-2 variant is supported. The ALOS-2 variant (comparing two uploaded GeoTIFFs)
+  is not available from the SDK
 
 ### Job management
 
@@ -204,6 +228,14 @@ credits are consumed).
 ```bash
 sateais preview lulc --polygon "POLYGON((...))" --month 2026-08
 sateais analyze lulc --polygon "POLYGON((...))" --month 2026-08 --wait -o lulc.zip
+```
+
+### Embankment detection
+
+```bash
+sateais preview embankment --polygon "POLYGON((...))" --date-start 2025-05-01 --date-end 2026-05-01
+sateais analyze embankment --polygon "POLYGON((...))" --date-start 2025-05-01 --date-end 2026-05-01 \
+  --wait -o embankment.geojson
 ```
 
 ### Passing parameters as JSON

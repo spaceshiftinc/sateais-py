@@ -87,6 +87,7 @@ class AnalysisType(str, Enum):
     DISAPPEARBUILDING = "disappearbuilding"
     TIMESERIES = "timeseries"
     LULC = "lulc"
+    EMBANKMENT = "embankment"
 
     @property
     def accepts_scene_or_polygon_date(self) -> bool:
@@ -100,6 +101,7 @@ class AnalysisType(str, Enum):
             AnalysisType.NEWBUILDING,
             AnalysisType.DISAPPEARBUILDING,
             AnalysisType.TIMESERIES,
+            AnalysisType.EMBANKMENT,
         )
 
     @property
@@ -108,17 +110,35 @@ class AnalysisType(str, Enum):
         return self is AnalysisType.LULC
 
     @property
-    def default_satellite_id(self) -> str:
-        """この種別で既定とする satellite_id
+    def fixed_satellite_id(self) -> str | None:
+        """この種別で API が要求する satellite_id。衛星を選べる種別では None
 
         lulc は内部で Sentinel-1 と Sentinel-2 の両方を使うが、権限が
         エンドポイント×衛星で付与されるため API が "sentinel-2" を要求する。
+        embankment は Sentinel-2 版のみ対応している（ALOS-2 版はアセットの
+        アップロードが前提で、SDK にその機能が無いため）。
         """
-        return LULC_SATELLITE_ID if self is AnalysisType.LULC else "sentinel-1"
+        if self in (AnalysisType.LULC, AnalysisType.EMBANKMENT):
+            return SENTINEL_2_SATELLITE_ID
+        return None
+
+    @property
+    def default_satellite_id(self) -> str:
+        """この種別で既定とする satellite_id"""
+        return self.fixed_satellite_id or "sentinel-1"
+
+    @property
+    def accepts_orbit_direction(self) -> bool:
+        """この種別のジョブが orbit_direction を受け付けるか
+
+        Sentinel-1 のシーン選定でだけ意味を持つ。Sentinel-2 を使う種別では
+        API が黙って無視するため、指定しても効かないことを投入前に知らせる。
+        """
+        return self.fixed_satellite_id is None
 
 
-#: lulc で指定を要求される satellite_id
-LULC_SATELLITE_ID = "sentinel-2"
+#: lulc / embankment で指定を要求される satellite_id
+SENTINEL_2_SATELLITE_ID = "sentinel-2"
 
 
 @dataclass(frozen=True)
@@ -129,15 +149,15 @@ class AnalysisRequest:
 
     Attributes:
         analysis_type: 解析種別
-        satellite_id: 衛星ID。既定は "sentinel-1"。lulc では "sentinel-2" 固定
-            （`AnalysisType.default_satellite_id` 参照）。
+        satellite_id: 衛星ID。既定は "sentinel-1"。lulc / embankment では "sentinel-2" 固定
+            （`AnalysisType.fixed_satellite_id` 参照）。
         scene_id: シーンID（ship/oilslick のシーン指定モード）
         polygon: WKT polygon (EPSG:4326)
         date: 基準日 YYYY-MM-DD（ship/oilslick の polygon モード）
         date_start: 開始日 YYYY-MM-DD（範囲指定型エンドポイント）
         date_end: 終了日 YYYY-MM-DD（同上）
         date_direction: "before" / "after" / "nearest"
-        orbit_direction: "ascending" / "descending"
+        orbit_direction: "ascending" / "descending"（Sentinel-1 を使う種別のみ）
         month: 解析期間の最終月 YYYY-MM（lulc）。この月で終わる 12 ヶ月を解析する
     """
 
@@ -159,6 +179,7 @@ class AnalysisRequest:
             InvalidAnalysisRequestError: 組み合わせが不正な場合
         """
         t = self.analysis_type
+        self._validate_satellite()
         if t.requires_month:
             self._validate_polygon_month()
             return
@@ -178,6 +199,17 @@ class AnalysisRequest:
                 raise InvalidAnalysisRequestError(
                     f"{t.value} requires polygon, date_start, and date_end"
                 )
+            if not t.accepts_orbit_direction and self.orbit_direction is not None:
+                raise InvalidAnalysisRequestError(f"{t.value} does not accept orbit_direction")
+
+    def _validate_satellite(self) -> None:
+        """衛星が固定の種別（lulc / embankment）で satellite_id が一致するかを検証する"""
+        t = self.analysis_type
+        fixed = t.fixed_satellite_id
+        if fixed is not None and self.satellite_id != fixed:
+            raise InvalidAnalysisRequestError(
+                f"{t.value} requires satellite_id={fixed!r} (got {self.satellite_id!r})"
+            )
 
     def _validate_polygon_month(self) -> None:
         """polygon + month のみを受け付ける種別（lulc）の組み合わせを検証する
@@ -202,10 +234,6 @@ class AnalysisRequest:
         if extra:
             raise InvalidAnalysisRequestError(
                 f"{t.value} accepts only polygon and month (got {', '.join(extra)})"
-            )
-        if self.satellite_id != LULC_SATELLITE_ID:
-            raise InvalidAnalysisRequestError(
-                f"{t.value} requires satellite_id={LULC_SATELLITE_ID!r} (got {self.satellite_id!r})"
             )
 
     def to_body(self) -> dict[str, str]:

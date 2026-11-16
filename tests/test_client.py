@@ -287,3 +287,42 @@ def test_jobs_wait_archive_on_geojson_job_raises(monkeypatch: pytest.MonkeyPatch
     with pytest.raises(SateAIsError, match="jobs.wait"):
         client.jobs.wait_archive("j-1", poll_interval=0)
     assert api.fetched_archives == []
+
+
+_EMBANKMENT_BODY = {
+    "satellite_id": "sentinel-2",
+    "polygon": "POLY",
+    "date_start": "2025-05-01",
+    "date_end": "2026-05-01",
+}
+
+
+def test_analyze_embankment_dispatches_with_sentinel_2() -> None:
+    api = FakeApiClient(next_job=make_job(status=JobStatus.PENDING))
+    client = Client(api_key="sk", api=api)
+    client.analyze.embankment(polygon="POLY", date_start="2025-05-01", date_end="2026-05-01")
+
+    req = api.submitted[0]
+    assert req.analysis_type is AnalysisType.EMBANKMENT
+    assert req.to_body() == _EMBANKMENT_BODY
+
+
+def test_preview_embankment_dispatches_to_preview_endpoint() -> None:
+    api = FakeApiClient(next_preview=make_preview("embankment"))
+    client = Client(api_key="sk", api=api)
+    preview = client.preview.embankment(
+        polygon="POLY", date_start="2025-05-01", date_end="2026-05-01"
+    )
+    assert preview.endpoint_id == "embankment"
+    assert api.previewed[0].to_body() == _EMBANKMENT_BODY
+    assert api.submitted == []
+
+
+def test_analyze_embankment_rejects_other_satellite_before_sending() -> None:
+    api = FakeApiClient(next_job=make_job())
+    client = Client(api_key="sk", api=api)
+    with pytest.raises(InvalidAnalysisRequestError, match="sentinel-2"):
+        client.analyze.embankment(
+            polygon="POLY", date_start="2025-05-01", date_end="2026-05-01", satellite_id="alos-2"
+        )
+    assert api.submitted == []

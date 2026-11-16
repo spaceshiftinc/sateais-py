@@ -51,6 +51,7 @@ ANALYZE_ENDPOINTS: tuple[AnalysisType, ...] = (
     AnalysisType.DISAPPEARBUILDING,
     AnalysisType.TIMESERIES,
     AnalysisType.LULC,
+    AnalysisType.EMBANKMENT,
 )
 
 # スペースシフトの MVV（Mission / Vision / Value）。`sateais mvv` で表示する。
@@ -175,18 +176,20 @@ def _add_endpoint_params(sp: argparse.ArgumentParser, dt: AnalysisType) -> None:
             help="Direction for date range filtering",
         )
     elif dt.requires_date_range:
-        # newbuilding / disappearbuilding / timeseries: polygon + date_start + date_end が必須
+        # newbuilding / disappearbuilding / timeseries / embankment:
+        # polygon + date_start + date_end が必須
         # 必須チェックは AnalysisRequest.validate() に集約する
         sp.add_argument("--date-start", help="Start date YYYY-MM-DD")
         sp.add_argument("--date-end", help="End date YYYY-MM-DD")
     elif dt.requires_month:
-        # lulc: polygon + month のみ。シーンは API が選ぶので軌道方向も受け付けない
+        # lulc: polygon + month のみ
         sp.add_argument(
             "--month",
             help="Last month of the 12-month analysis period, YYYY-MM (even months only)",
         )
 
-    if not dt.requires_month:
+    # 軌道方向は Sentinel-1 のシーン選定でだけ意味を持つ
+    if dt.accepts_orbit_direction:
         sp.add_argument(
             "--orbit-direction",
             choices=["ascending", "descending"],
